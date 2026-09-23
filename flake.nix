@@ -22,6 +22,8 @@
           with pkgs;
           mkShell rec {
             buildInputs = [
+              python313
+              python313Packages.pygame
               cargo
               libxkbcommon
               vulkan-loader
