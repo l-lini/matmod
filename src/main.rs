@@ -1,12 +1,15 @@
+use bytemuck::{NoUninit, Pod, bytes_of};
 use std::{borrow::Cow, sync::Arc};
 use tokio::runtime::Runtime;
 use wgpu::{
-    Color, CommandEncoderDescriptor, CurrentSurfaceTexture::*, Device, DeviceDescriptor,
-    FragmentState, Instance, InstanceDescriptor, LoadOp, MultisampleState, Operations,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, PrimitiveTopology, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderModule, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface,
-    SurfaceConfiguration, TextureFormat, TextureViewDescriptor, VertexState,
+    Buffer, BufferAddress, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor,
+    CurrentSurfaceTexture::*, Device, DeviceDescriptor, FragmentState, Instance,
+    InstanceDescriptor, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    ShaderModule, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface, SurfaceConfiguration,
+    TextureFormat, TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    vertex_attr_array,
 };
 use winit::{
     application::ApplicationHandler,
@@ -15,12 +18,20 @@ use winit::{
     window::{Window, WindowId},
 };
 
+#[repr(C, packed)]
+#[derive(NoUninit, Copy, Clone)]
+struct Vertex {
+    x: f32,
+    y: f32,
+}
+
 enum Game<'s> {
     Uninitialized,
     Initialized {
         queue: Queue,
         device: Device,
         window: Arc<Window>,
+        buffer: Buffer,
         surface: Surface<'s>,
         instance: Instance,
         shader: ShaderModule,
@@ -58,6 +69,13 @@ impl<'s> ApplicationHandler for Game<'s> {
             .block_on(adapter.request_device(&DeviceDescriptor::default()))
             .unwrap();
 
+        let buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: 100,
+            usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+
         let [width, height] = window.inner_size().into();
 
         let surface_configuration = surface.get_default_config(&adapter, width, height).unwrap();
@@ -81,7 +99,14 @@ impl<'s> ApplicationHandler for Game<'s> {
             vertex: VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &vec![],
+                buffers: &vec![Some(VertexBufferLayout {
+                    array_stride: 8 as BufferAddress,
+                    step_mode: VertexStepMode::Vertex,
+                    attributes: &vertex_attr_array![
+                        0 => Float32,
+                        1 => Float32
+                    ],
+                })],
                 compilation_options: PipelineCompilationOptions {
                     constants: &vec![],
                     zero_initialize_workgroup_memory: true,
@@ -97,7 +122,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                 },
             }),
             primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
+                topology: PrimitiveTopology::LineList,
                 strip_index_format: None,
                 ..Default::default()
             },
@@ -110,6 +135,7 @@ impl<'s> ApplicationHandler for Game<'s> {
         *self = Game::Initialized {
             queue,
             device,
+            buffer,
             window,
             surface,
             instance,
@@ -142,6 +168,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     device,
                     window,
                     pipeline,
+                    buffer,
                     ..
                 } = self
                 {
@@ -169,10 +196,28 @@ impl<'s> ApplicationHandler for Game<'s> {
                                         ..Default::default()
                                     });
 
+                                let _ = render_pass.set_vertex_buffer(0, buffer.slice(..));
+
                                 render_pass.set_pipeline(&pipeline);
                                 render_pass.draw(0..3, 0..1);
                             }
 
+                            let verticies = [
+                                Vertex { x: 0.0, y: 0.0 },
+                                Vertex { x: 0.0, y: -0.5 },
+                                Vertex { x: -0.5, y: -0.5 },
+                                Vertex { x: 0.0, y: 0.0 },
+                                Vertex { x: 1.0, y: 1.0 },
+                                Vertex { x: 0.0, y: 1.0 },
+                            ];
+                            let bytes: Vec<u8> = verticies
+                                .iter()
+                                .map(|vertex| [vertex.x, vertex.y])
+                                .flatten()
+                                .map(|float| float.to_bits().to_ne_bytes())
+                                .flatten()
+                                .collect();
+                            let floats = queue.write_buffer(&buffer, 0, &bytes);
                             let command_buffers = vec![command_encoder.finish()];
                             queue.submit(command_buffers);
 

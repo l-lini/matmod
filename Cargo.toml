@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bytemuck = { version = "1.25.2", features = [ "derive" ] }
 tokio = { version = "1.53.1", features = [ "rt-multi-thread" ] }
 wgpu = { version = "30.0.0", features = [ "vulkan" ] }
 winit = "0.30.13"
