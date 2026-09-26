@@ -1,4 +1,5 @@
 use bytemuck::NoUninit;
+use cgmath::Vector2;
 use spheres::physics::*;
 use std::{
     borrow::Cow,
@@ -18,7 +19,7 @@ use wgpu::{
 };
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowId},
 };
@@ -45,6 +46,7 @@ enum Game<'s> {
         instant: Instant,
         spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
+        mouse_position: Vector2<f32>,
         surface_configuration: SurfaceConfiguration,
     },
 }
@@ -151,22 +153,8 @@ impl<'s> ApplicationHandler for Game<'s> {
             shader,
             pipeline,
             instant: Instant::now(),
-            spheres: vec![
-                Sphere {
-                    x: 50.0,
-                    y: 20.0,
-                    xv: 20.0,
-                    yv: 50.0,
-                    r: 10.0,
-                },
-                Sphere {
-                    x: 500.0,
-                    y: 200.0,
-                    xv: 200.0,
-                    yv: 500.0,
-                    r: 100.0,
-                },
-            ],
+            spheres: vec![],
+            mouse_position: Vector2::new(0.0, 0.0),
             surface_configuration,
         };
     }
@@ -185,6 +173,31 @@ impl<'s> ApplicationHandler for Game<'s> {
                     surface_configuration.width = size.width;
                     surface_configuration.height = size.height;
                     surface.configure(&device, &surface_configuration);
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                if let Game::Initialized { mouse_position, .. } = self {
+                    mouse_position.x = position.x as f32;
+                    mouse_position.y = position.y as f32;
+                }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                ..
+            } => {
+                if let Game::Initialized {
+                    mouse_position,
+                    spheres,
+                    ..
+                } = self
+                {
+                    spheres.push(Sphere {
+                        position: *mouse_position,
+                        velocity: *mouse_position,
+                        acceleration: Vector2::new(0.0, -9.82),
+                        radius: 50.0,
+                        mass: 1.0,
+                    });
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -206,12 +219,41 @@ impl<'s> ApplicationHandler for Game<'s> {
                             let width = surface_configuration.width as f32;
                             let height = surface_configuration.height as f32;
 
-                            let delta_time = instant.elapsed();
+                            let delta_duration = instant.elapsed();
                             *instant = Instant::now();
-                            tick(spheres, width, height, delta_time);
+
+                            let borders = vec![
+                                Border {
+                                    position: Vector2::new(0.0, 0.0),
+                                    normal: Vector2::new(0.0, 1.0),
+                                },
+                                Border {
+                                    position: Vector2::new(0.0, 0.0),
+                                    normal: Vector2::new(1.0, 0.0),
+                                },
+                                Border {
+                                    position: Vector2::new(0.0, height),
+                                    normal: Vector2::new(0.0, -1.0),
+                                },
+                                Border {
+                                    position: Vector2::new(width, 0.0),
+                                    normal: Vector2::new(-1.0, 0.0),
+                                },
+                            ];
+
+                            tick(spheres, &borders, delta_duration);
+
                             let verticies: Vec<Vertex> = spheres
                                 .iter()
-                                .map(|Sphere { x, y, r, .. }| (x - r, y - r, x + r, y + r))
+                                .map(
+                                    |Sphere {
+                                         position: Vector2 { x, y },
+                                         radius,
+                                         ..
+                                     }| {
+                                        (x - radius, y - radius, x + radius, y + radius)
+                                    },
+                                )
                                 .map(|(x_min, y_min, x_max, y_max)| {
                                     (
                                         x_min as i32 - width as i32 / 2,
@@ -313,7 +355,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                 }
             }
             _ => {
-                dbg!(event);
+                // dbg!(event);
             }
         }
     }
