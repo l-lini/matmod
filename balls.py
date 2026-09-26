@@ -147,7 +147,9 @@ class Model:
     def __init__(self):
         # Initialize the model with a few balls
         self.balls = [Ball(1, 2.5, 1.2, 1.6, 0.2),
-                      Ball(2, 1.5, -0.6, 0.6, 0.3)]
+                      Ball(2, 1.5, -0.6, 0.6, 0.3),
+                      Ball(3, 0.5, -0.5, 0.6, 0.5),
+                      ]
 
     def next(self, deltaT):
         # This method implements one step of the simulation with a time interval of deltaT seconds

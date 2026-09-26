@@ -1,4 +1,4 @@
-use bytemuck::{NoUninit, Pod, bytes_of};
+use bytemuck::NoUninit;
 use std::{borrow::Cow, sync::Arc};
 use tokio::runtime::Runtime;
 use wgpu::{
@@ -18,11 +18,13 @@ use winit::{
     window::{Window, WindowId},
 };
 
+const MAX_BALLS: usize = 10_000;
+
 #[repr(C, packed)]
-#[derive(NoUninit, Copy, Clone)]
+#[derive(NoUninit, Copy, Clone, Debug)]
 struct Vertex {
-    x: f32,
-    y: f32,
+    position: [f32; 2],
+    texture_position: [f32; 2],
 }
 
 enum Game<'s> {
@@ -71,7 +73,7 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         let buffer = device.create_buffer(&BufferDescriptor {
             label: None,
-            size: 100,
+            size: size_of::<Vertex>() as u64 * 6 * MAX_BALLS as u64,
             usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
             mapped_at_creation: false,
         });
@@ -100,11 +102,11 @@ impl<'s> ApplicationHandler for Game<'s> {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &vec![Some(VertexBufferLayout {
-                    array_stride: 8 as BufferAddress,
+                    array_stride: size_of::<Vertex>() as BufferAddress,
                     step_mode: VertexStepMode::Vertex,
                     attributes: &vertex_attr_array![
-                        0 => Float32,
-                        1 => Float32
+                        0 => Float32x2,
+                        1 => Float32x2,
                     ],
                 })],
                 compilation_options: PipelineCompilationOptions {
@@ -122,7 +124,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                 },
             }),
             primitive: PrimitiveState {
-                topology: PrimitiveTopology::LineList,
+                topology: PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 ..Default::default()
             },
@@ -169,16 +171,78 @@ impl<'s> ApplicationHandler for Game<'s> {
                     window,
                     pipeline,
                     buffer,
+                    surface_configuration,
                     ..
                 } = self
                 {
                     match surface.get_current_texture() {
                         Success(texture) => {
+                            let balls: Vec<(u32, u32, u32)> =
+                                vec![(100, 100, 100), (300, 300, 200)];
+                            let width = surface_configuration.width;
+                            let height = surface_configuration.height;
+                            let verticies: Vec<Vertex> = balls
+                                .iter()
+                                .map(|(x, y, r)| (x - r, y - r, x + r, y + r))
+                                .map(|(x_min, y_min, x_max, y_max)| {
+                                    (
+                                        x_min as i32 - width as i32 / 2,
+                                        y_min as i32 - height as i32 / 2,
+                                        x_max as i32 - width as i32 / 2,
+                                        y_max as i32 - height as i32 / 2,
+                                    )
+                                })
+                                .map(
+                                    |(
+                                        centered_x_min,
+                                        centered_y_min,
+                                        centered_x_max,
+                                        centered_y_max,
+                                    )| {
+                                        (
+                                            centered_x_min as f32 / width as f32,
+                                            centered_y_min as f32 / height as f32,
+                                            centered_x_max as f32 / width as f32,
+                                            centered_y_max as f32 / height as f32,
+                                        )
+                                    },
+                                )
+                                .map(|(x, y, x_, y_)| (2.0 * x, 2.0 * y, 2.0 * x_, 2.0 * y_))
+                                .map(|(x_min, y_min, x_max, y_max)| {
+                                    [
+                                        Vertex {
+                                            position: [x_min, y_min],
+                                            texture_position: [-1.0, -1.0],
+                                        },
+                                        Vertex {
+                                            position: [x_min, y_max],
+                                            texture_position: [-1.0, 1.0],
+                                        },
+                                        Vertex {
+                                            position: [x_max, y_max],
+                                            texture_position: [1.0, 1.0],
+                                        },
+                                        Vertex {
+                                            position: [x_max, y_max],
+                                            texture_position: [1.0, 1.0],
+                                        },
+                                        Vertex {
+                                            position: [x_max, y_min],
+                                            texture_position: [1.0, -1.0],
+                                        },
+                                        Vertex {
+                                            position: [x_min, y_min],
+                                            texture_position: [-1.0, -1.0],
+                                        },
+                                    ]
+                                })
+                                .flatten()
+                                .collect();
                             let mut command_encoder =
                                 device.create_command_encoder(&CommandEncoderDescriptor::default());
                             {
                                 let view = &texture.texture.create_view(&TextureViewDescriptor {
-                                    format: Some(TextureFormat::Bgra8UnormSrgb),
+                                    format: Some(surface_configuration.format),
                                     ..Default::default()
                                 });
 
@@ -189,7 +253,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                                             depth_slice: None,
                                             resolve_target: None,
                                             ops: Operations {
-                                                load: LoadOp::Clear(Color::WHITE),
+                                                load: LoadOp::Clear(Color::BLACK),
                                                 store: StoreOp::Store,
                                             },
                                         })],
@@ -199,25 +263,10 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 let _ = render_pass.set_vertex_buffer(0, buffer.slice(..));
 
                                 render_pass.set_pipeline(&pipeline);
-                                render_pass.draw(0..3, 0..1);
+                                render_pass.draw(0..(balls.len() as u32 * 6), 0..1);
                             }
 
-                            let verticies = [
-                                Vertex { x: 0.0, y: 0.0 },
-                                Vertex { x: 0.0, y: -0.5 },
-                                Vertex { x: -0.5, y: -0.5 },
-                                Vertex { x: 0.0, y: 0.0 },
-                                Vertex { x: 1.0, y: 1.0 },
-                                Vertex { x: 0.0, y: 1.0 },
-                            ];
-                            let bytes: Vec<u8> = verticies
-                                .iter()
-                                .map(|vertex| [vertex.x, vertex.y])
-                                .flatten()
-                                .map(|float| float.to_bits().to_ne_bytes())
-                                .flatten()
-                                .collect();
-                            let floats = queue.write_buffer(&buffer, 0, &bytes);
+                            queue.write_buffer(&buffer, 0, &bytemuck::cast_slice(&verticies));
                             let command_buffers = vec![command_encoder.finish()];
                             queue.submit(command_buffers);
 
