@@ -1,4 +1,5 @@
 use bytemuck::NoUninit;
+use spheres::physics::*;
 use std::{
     borrow::Cow,
     sync::Arc,
@@ -31,14 +32,6 @@ struct Vertex {
     texture_position: [f32; 2],
 }
 
-struct Ball {
-    x: f32,
-    y: f32,
-    xv: f32,
-    yv: f32,
-    r: f32,
-}
-
 enum Game<'s> {
     Uninitialized,
     Initialized {
@@ -50,7 +43,7 @@ enum Game<'s> {
         instance: Instance,
         shader: ShaderModule,
         instant: Instant,
-        balls: Vec<Ball>,
+        spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
         surface_configuration: SurfaceConfiguration,
     },
@@ -158,15 +151,15 @@ impl<'s> ApplicationHandler for Game<'s> {
             shader,
             pipeline,
             instant: Instant::now(),
-            balls: vec![
-                Ball {
+            spheres: vec![
+                Sphere {
                     x: 50.0,
                     y: 20.0,
                     xv: 20.0,
                     yv: 50.0,
                     r: 10.0,
                 },
-                Ball {
+                Sphere {
                     x: 500.0,
                     y: 200.0,
                     xv: 200.0,
@@ -202,7 +195,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     window,
                     pipeline,
                     buffer,
-                    balls,
+                    spheres,
                     instant,
                     surface_configuration,
                     ..
@@ -213,34 +206,12 @@ impl<'s> ApplicationHandler for Game<'s> {
                             let width = surface_configuration.width as f32;
                             let height = surface_configuration.height as f32;
 
-                            let delta_time = instant.elapsed().as_secs_f32();
+                            let delta_time = instant.elapsed();
                             *instant = Instant::now();
-                            for ball in balls.iter_mut() {
-                                ball.yv -= 9.82 * delta_time / 2.0;
-                                ball.x += ball.xv * delta_time;
-                                ball.y += ball.yv * delta_time;
-                                ball.yv -= 9.82 * delta_time / 2.0;
-
-                                if ball.y < ball.r {
-                                    ball.y = ball.r;
-                                    ball.yv = ball.yv.abs();
-                                }
-                                if ball.y > height - ball.r {
-                                    ball.y = height - ball.r;
-                                    ball.yv = -ball.yv.abs();
-                                }
-                                if ball.x > width - ball.r {
-                                    ball.x = width - ball.r;
-                                    ball.xv = -ball.xv.abs();
-                                }
-                                if ball.x < ball.r {
-                                    ball.x = ball.r;
-                                    ball.xv = ball.xv.abs();
-                                }
-                            }
-                            let verticies: Vec<Vertex> = balls
+                            tick(spheres, width, height, delta_time);
+                            let verticies: Vec<Vertex> = spheres
                                 .iter()
-                                .map(|Ball { x, y, r, .. }| (x - r, y - r, x + r, y + r))
+                                .map(|Sphere { x, y, r, .. }| (x - r, y - r, x + r, y + r))
                                 .map(|(x_min, y_min, x_max, y_max)| {
                                     (
                                         x_min as i32 - width as i32 / 2,
@@ -320,7 +291,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 let _ = render_pass.set_vertex_buffer(0, buffer.slice(..));
 
                                 render_pass.set_pipeline(&pipeline);
-                                render_pass.draw(0..(balls.len() as u32 * 6), 0..1);
+                                render_pass.draw(0..(spheres.len() as u32 * 6), 0..1);
                             }
 
                             queue.write_buffer(&buffer, 0, &bytemuck::cast_slice(&verticies));
