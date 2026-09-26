@@ -1,5 +1,9 @@
 use bytemuck::NoUninit;
-use std::{borrow::Cow, sync::Arc};
+use std::{
+    borrow::Cow,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::runtime::Runtime;
 use wgpu::{
     Buffer, BufferAddress, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor,
@@ -27,6 +31,14 @@ struct Vertex {
     texture_position: [f32; 2],
 }
 
+struct Ball {
+    x: f32,
+    y: f32,
+    xv: f32,
+    yv: f32,
+    r: f32,
+}
+
 enum Game<'s> {
     Uninitialized,
     Initialized {
@@ -37,6 +49,8 @@ enum Game<'s> {
         surface: Surface<'s>,
         instance: Instance,
         shader: ShaderModule,
+        instant: Instant,
+        balls: Vec<Ball>,
         pipeline: RenderPipeline,
         surface_configuration: SurfaceConfiguration,
     },
@@ -143,6 +157,23 @@ impl<'s> ApplicationHandler for Game<'s> {
             instance,
             shader,
             pipeline,
+            instant: Instant::now(),
+            balls: vec![
+                Ball {
+                    x: 50.0,
+                    y: 20.0,
+                    xv: 20.0,
+                    yv: 50.0,
+                    r: 10.0,
+                },
+                Ball {
+                    x: 500.0,
+                    y: 200.0,
+                    xv: 200.0,
+                    yv: 500.0,
+                    r: 100.0,
+                },
+            ],
             surface_configuration,
         };
     }
@@ -171,19 +202,45 @@ impl<'s> ApplicationHandler for Game<'s> {
                     window,
                     pipeline,
                     buffer,
+                    balls,
+                    instant,
                     surface_configuration,
                     ..
                 } = self
                 {
                     match surface.get_current_texture() {
                         Success(texture) => {
-                            let balls: Vec<(u32, u32, u32)> =
-                                vec![(100, 100, 100), (300, 300, 200)];
-                            let width = surface_configuration.width;
-                            let height = surface_configuration.height;
+                            let width = surface_configuration.width as f32;
+                            let height = surface_configuration.height as f32;
+
+                            let delta_time = instant.elapsed().as_secs_f32();
+                            *instant = Instant::now();
+                            for ball in balls.iter_mut() {
+                                ball.yv -= 9.82 * delta_time / 2.0;
+                                ball.x += ball.xv * delta_time;
+                                ball.y += ball.yv * delta_time;
+                                ball.yv -= 9.82 * delta_time / 2.0;
+
+                                if ball.y < ball.r {
+                                    ball.y = ball.r;
+                                    ball.yv = ball.yv.abs();
+                                }
+                                if ball.y > height - ball.r {
+                                    ball.y = height - ball.r;
+                                    ball.yv = -ball.yv.abs();
+                                }
+                                if ball.x > width - ball.r {
+                                    ball.x = width - ball.r;
+                                    ball.xv = -ball.xv.abs();
+                                }
+                                if ball.x < ball.r {
+                                    ball.x = ball.r;
+                                    ball.xv = ball.xv.abs();
+                                }
+                            }
                             let verticies: Vec<Vertex> = balls
                                 .iter()
-                                .map(|(x, y, r)| (x - r, y - r, x + r, y + r))
+                                .map(|Ball { x, y, r, .. }| (x - r, y - r, x + r, y + r))
                                 .map(|(x_min, y_min, x_max, y_max)| {
                                     (
                                         x_min as i32 - width as i32 / 2,
@@ -200,10 +257,10 @@ impl<'s> ApplicationHandler for Game<'s> {
                                         centered_y_max,
                                     )| {
                                         (
-                                            centered_x_min as f32 / width as f32,
-                                            centered_y_min as f32 / height as f32,
-                                            centered_x_max as f32 / width as f32,
-                                            centered_y_max as f32 / height as f32,
+                                            centered_x_min as f32 / width,
+                                            centered_y_min as f32 / height,
+                                            centered_x_max as f32 / width,
+                                            centered_y_max as f32 / height,
                                         )
                                     },
                                 )
