@@ -23,8 +23,8 @@ fn fs_main(vertex: VertexOutput) -> @location(0) vec4<f32> {
     var r: f32 = length(vertex.texture_position);
     if length(vertex.texture_position) > 1.0 {
 		discard;
-    } else if length(vertex.texture_position) > 0.95 {
-        a = 1.0 - smoothstep(0.95, 1.0, r);
+    } else if length(vertex.texture_position) > 0.99 {
+        a = 1.0 - smoothstep(0.99, 1.0, r);
     } else {
         a = 1.0;
     }

@@ -186,15 +186,19 @@ impl<'s> ApplicationHandler for Game<'s> {
                 ..
             } => {
                 if let Game::Initialized {
+                    surface_configuration,
                     mouse_position,
                     spheres,
                     ..
                 } = self
                 {
                     spheres.push(Sphere {
-                        position: *mouse_position,
+                        position: Vector2::new(
+                            mouse_position.x,
+                            surface_configuration.height as f32 - mouse_position.y,
+                        ),
                         velocity: *mouse_position,
-                        acceleration: Vector2::new(0.0, -9.82),
+                        acceleration: Vector2::new(0.0, -98.2),
                         radius: 50.0,
                         mass: 1.0,
                     });
