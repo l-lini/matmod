@@ -1,5 +1,5 @@
 use bytemuck::NoUninit;
-use cgmath::Vector2;
+use cgmath::{Vector2, prelude::*};
 use spheres::physics::*;
 use std::{
     borrow::Cow,
@@ -19,8 +19,9 @@ use wgpu::{
 };
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, WindowEvent},
+    event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
 
@@ -33,9 +34,17 @@ struct Vertex {
     texture_position: [f32; 2],
 }
 
+enum SphereStep {
+    None,
+    Size,
+    Speed,
+}
+
 enum Game<'s> {
     Uninitialized,
     Initialized {
+        pause: bool,
+        sphere_step: SphereStep,
         queue: Queue,
         device: Device,
         window: Arc<Window>,
@@ -144,6 +153,8 @@ impl<'s> ApplicationHandler for Game<'s> {
         });
 
         *self = Game::Initialized {
+            pause: false,
+            sphere_step: SphereStep::None,
             queue,
             device,
             buffer,
@@ -181,6 +192,19 @@ impl<'s> ApplicationHandler for Game<'s> {
                     mouse_position.y = position.y as f32;
                 }
             }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Space),
+                        state: ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => {
+                if let Game::Initialized { pause, .. } = self {
+                    *pause = !*pause;
+                }
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 ..
@@ -189,23 +213,55 @@ impl<'s> ApplicationHandler for Game<'s> {
                     surface_configuration,
                     mouse_position,
                     spheres,
+                    sphere_step,
                     ..
                 } = self
                 {
-                    spheres.push(Sphere {
-                        position: Vector2::new(
-                            mouse_position.x,
-                            surface_configuration.height as f32 - mouse_position.y,
-                        ),
-                        velocity: *mouse_position,
-                        acceleration: Vector2::new(0.0, -98.2),
-                        radius: 50.0,
-                        mass: 1.0,
-                    });
+                    let mouse_world_position = Vector2::new(
+                        mouse_position.x,
+                        surface_configuration.height as f32 - mouse_position.y,
+                    );
+                    match sphere_step {
+                        SphereStep::None => {
+                            let new_spheres: Vec<_> = spheres
+                                .iter()
+                                .filter(|sphere| {
+                                    (sphere.position - mouse_world_position).magnitude()
+                                        > sphere.radius
+                                })
+                                .map(|&sphere| sphere.clone())
+                                .collect();
+                            if new_spheres.len() < spheres.len() {
+                                *spheres = new_spheres;
+                            } else {
+                                spheres.push(Sphere {
+                                    position: mouse_world_position,
+                                    velocity: Vector2::new(0.0, 0.0),
+                                    acceleration: Vector2::new(0.0, -98.2),
+                                    radius: 1.0,
+                                    mass: 1.0,
+                                });
+                                *sphere_step = SphereStep::Size;
+                            }
+                        }
+                        SphereStep::Size => {
+                            let r = (spheres.last().unwrap().position - mouse_world_position)
+                                .magnitude();
+                            spheres.last_mut().unwrap().radius = r;
+                            spheres.last_mut().unwrap().mass = r.powi(3);
+                            *sphere_step = SphereStep::Speed;
+                        }
+                        SphereStep::Speed => {
+                            spheres.last_mut().unwrap().velocity =
+                                mouse_world_position - spheres.last().unwrap().position;
+                            *sphere_step = SphereStep::None;
+                        }
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
                 if let Game::Initialized {
+                    sphere_step,
                     surface,
                     queue,
                     device,
@@ -214,6 +270,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     buffer,
                     spheres,
                     instant,
+                    pause,
                     surface_configuration,
                     ..
                 } = self
@@ -245,7 +302,12 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 },
                             ];
 
-                            tick(spheres, &borders, delta_duration);
+                            match (*pause, sphere_step) {
+                                (false, SphereStep::None) => {
+                                    tick(spheres, &borders, delta_duration)
+                                }
+                                _ => (),
+                            }
 
                             let verticies: Vec<Vertex> = spheres
                                 .iter()

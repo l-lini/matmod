@@ -143,7 +143,7 @@ pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Durat
         seconds_until,
         sphere_index,
         object,
-    }) = next_collision(&spheres, &borders, -delta_seconds, delta_seconds)
+    }) = next_collision(&spheres, &borders, delta_seconds / 1000.0, delta_seconds)
     {
         delta_seconds -= seconds_until;
 
@@ -182,7 +182,11 @@ pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Durat
                 spheres[sphere_index].velocity = cvp * v1.x + cv * v1.y;
                 spheres[other_sphere_index].velocity = cvp * v2.x + cv * v2.y;
 
-                dbg!("boom");
+                dbg!(
+                    spheres[sphere_index]
+                        .velocity
+                        .angle(spheres[other_sphere_index].velocity)
+                );
             }
         }
     }
