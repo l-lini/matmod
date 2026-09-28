@@ -5,17 +5,7 @@ use std::time::Duration;
 pub struct Sphere {
     pub position: Vector2<f32>,
     pub velocity: Vector2<f32>,
-    pub acceleration: Vector2<f32>,
     pub radius: f32,
-    pub mass: f32,
-}
-
-impl Sphere {
-    fn time_travel(&mut self, seconds: f32) {
-        self.velocity += self.acceleration * seconds / 2.0;
-        self.position += self.velocity * seconds;
-        self.velocity += self.acceleration * seconds / 2.0;
-    }
 }
 
 pub struct Border {
@@ -23,175 +13,107 @@ pub struct Border {
     pub position: Vector2<f32>,
 }
 
-pub struct Collision {
-    seconds_until: f32,
-    sphere_index: usize,
-    object: CollisionObject,
+pub fn collides_with_border(sphere: &Sphere, border: &Border) -> bool {
+    let distance = (sphere.position - border.position).dot(border.normal.normalize());
+
+    distance < sphere.radius
 }
 
-pub enum CollisionObject {
-    Sphere(usize),
-    Border(usize),
+pub fn perpendicular(v: Vector2<f32>) -> Vector2<f32> {
+    Vector2::new(v.y, v.x)
 }
 
-pub fn seconds_until_border(sphere: &Sphere, border: &Border) -> Option<f32> {
-    let v = sphere.velocity.dot(border.normal);
-    let p = (sphere.position - border.position).dot(border.normal);
-    let t = -(p - sphere.radius) / v;
+pub fn collide_with_border(sphere: &mut Sphere, border: &Border) {
+    let paralell_velocity = sphere.velocity.project_on(perpendicular(border.normal));
+    let perpendicular_velocity = sphere.velocity.project_on(border.normal);
 
-    if v < 0.0 { Some(t) } else { None }
+    sphere.velocity = paralell_velocity - perpendicular_velocity;
 }
 
-pub fn seconds_until_sphere(sphere: &Sphere, other_sphere: &Sphere) -> Option<f32> {
-    let r = sphere.radius + other_sphere.radius;
-    let v = other_sphere.velocity - sphere.velocity;
-    let p = other_sphere.position - sphere.position;
-
-    let a = v.x.powi(2) + v.y.powi(2);
-    let b = 2.0 * p.x * v.x + 2.0 * p.y * v.y;
-    let c = p.x.powi(2) + p.y.powi(2) - r.powi(2);
-
-    let slope = |t| 2.0 * a * t + b;
-
-    let radicand = b.powi(2) - 4.0 * a * c;
-
-    if radicand < 0.0 {
-        return None;
-    }
-
-    let t = (-b - radicand.sqrt()) / (2.0 * a);
-
-    if slope(t) < 0.0 {
-        return Some(t);
-    }
-
-    let t = (-b + radicand.sqrt()) / (2.0 * a);
-
-    if slope(t) < 0.0 {
-        return Some(t);
-    }
-
-    return None;
+pub fn collides_with_sphere(sphere1: &Sphere, sphere2: &Sphere) -> bool {
+    sphere1.position.distance(sphere2.position) < sphere1.radius + sphere2.radius
 }
 
-pub fn next_collision(
-    spheres: &[Sphere],
-    borders: &[Border],
-    min_seconds: f32,
-    max_seconds: f32,
-) -> Option<Collision> {
-    let mut collision = None;
+pub fn collide_paralell(m1: f32, m2: f32, v1: f32, v2: f32) -> (f32, f32) {
+    dbg!(v1, v2);
+    (v2, v1)
+}
 
-    for (sphere_index, sphere) in spheres.iter().enumerate() {
-        for (border_index, border) in borders.iter().enumerate() {
-            let t = seconds_until_border(sphere, border);
+pub fn collide_with_sphere(sphere1: &mut Sphere, sphere2: &mut Sphere) {
+    let collision_vector = (sphere1.position - sphere2.position).normalize();
 
-            match (t, &collision) {
-                (Some(t), None) if t > min_seconds && t < max_seconds => {
-                    collision = Some(Collision {
-                        seconds_until: t,
-                        sphere_index,
-                        object: CollisionObject::Border(border_index),
-                    })
-                }
-                (Some(t), Some(Collision { seconds_until, .. }))
-                    if t > min_seconds && t < max_seconds && t < *seconds_until =>
-                {
-                    collision = Some(Collision {
-                        seconds_until: t,
-                        sphere_index,
-                        object: CollisionObject::Border(border_index),
-                    })
-                }
-                _ => (),
+    let u1 = sphere1.velocity.dot(collision_vector);
+    let u2 = sphere2.velocity.dot(collision_vector);
+
+    let sphere1_perpendicular_velocity =
+        sphere1.velocity.project_on(perpendicular(collision_vector));
+    let sphere2_perpendicular_velocity =
+        sphere2.velocity.project_on(perpendicular(collision_vector));
+
+    let (v1, v2) = (u2, u1);
+
+    sphere1.velocity = v1 * collision_vector + sphere1_perpendicular_velocity;
+    sphere2.velocity = v2 * collision_vector + sphere2_perpendicular_velocity;
+}
+
+pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Duration) -> bool {
+    let mut b = false;
+    for i in 0..spheres.len() {
+        for border in borders {
+            let sphere = spheres.get_mut(i).unwrap();
+
+            if collides_with_border(sphere, border) {
+                collide_with_border(sphere, border);
             }
         }
 
-        for (other_sphere_index, other_sphere) in spheres.iter().enumerate().skip(sphere_index + 1)
-        {
-            let t = seconds_until_sphere(&sphere, &other_sphere);
+        for j in (i + 1)..spheres.len() {
+            dbg!(i, j);
+            let [sphere1, sphere2] = spheres.get_disjoint_mut([i, j]).unwrap();
 
-            match (t, &collision) {
-                (Some(t), None) if t > min_seconds && t < max_seconds => {
-                    collision = Some(Collision {
-                        seconds_until: t,
-                        sphere_index,
-                        object: CollisionObject::Sphere(other_sphere_index),
-                    })
-                }
-                (Some(t), Some(Collision { seconds_until, .. }))
-                    if t > min_seconds && t < max_seconds && t < *seconds_until =>
-                {
-                    collision = Some(Collision {
-                        seconds_until: t,
-                        sphere_index,
-                        object: CollisionObject::Sphere(other_sphere_index),
-                    })
-                }
-                _ => (),
+            if collides_with_sphere(sphere1, sphere2) {
+                collide_with_sphere(sphere1, sphere2);
+                b = true;
             }
         }
     }
 
-    collision
-}
-
-pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Duration) {
-    let mut delta_seconds = delta_duration.as_secs_f32();
-
-    while let Some(Collision {
-        seconds_until,
-        sphere_index,
-        object,
-    }) = next_collision(&spheres, &borders, delta_seconds / 1000.0, delta_seconds)
-    {
-        delta_seconds -= seconds_until;
-
-        for sphere_index in 0..spheres.len() {
-            spheres[sphere_index].time_travel(seconds_until);
-        }
-
-        match object {
-            CollisionObject::Border(i) => {
-                let border = &borders[i];
-                let projected_velocity = spheres[sphere_index].velocity.project_on(border.normal);
-                spheres[sphere_index].velocity -= 2.0 * projected_velocity;
-            }
-            CollisionObject::Sphere(other_sphere_index) => {
-                let cv = (spheres[other_sphere_index].position - spheres[sphere_index].position)
-                    .normalize();
-                let cvp = Vector2::new(cv.y, cv.x);
-
-                let mut v1 = Vector2::new(
-                    spheres[sphere_index].velocity.dot(cvp),
-                    spheres[sphere_index].velocity.dot(cv),
-                );
-                let mut v2 = Vector2::new(
-                    spheres[other_sphere_index].velocity.dot(cvp),
-                    spheres[other_sphere_index].velocity.dot(cv),
-                );
-
-                let m1 = spheres[sphere_index].mass.powi(3);
-                let m2 = spheres[other_sphere_index].mass.powi(3);
-
-                let r = v2.y - v1.y;
-                let i = v1.y * m1 + v2.y * m2;
-                v1.y = (i + m2 * r) / (m1 + m2);
-                v2.y = (i - m1 * r) / (m1 + m2);
-
-                spheres[sphere_index].velocity = cvp * v1.x + cv * v1.y;
-                spheres[other_sphere_index].velocity = cvp * v2.x + cv * v2.y;
-
-                dbg!(
-                    spheres[sphere_index]
-                        .velocity
-                        .angle(spheres[other_sphere_index].velocity)
-                );
-            }
-        }
-    }
-
+    let delta_seconds = delta_duration.as_secs_f32();
     for sphere in spheres {
-        sphere.time_travel(delta_seconds);
+        sphere.position += sphere.velocity * delta_seconds;
+        // sphere.velocity.y -= 9.82;
+    }
+
+    return b;
+
+    dbg!(delta_seconds);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paralell_collision_same_mass() {
+        let m1 = 1.0;
+        let m2 = m1;
+        let v1 = 99.0;
+        let v2 = -50.0;
+        assert_eq!(collide_paralell(m1, m2, v1, v2), (v2, v1));
+    }
+
+    #[test]
+    fn collides_with_border_inside_border() {
+        let b = Border {
+            normal: Vector2::new(-1.0, 0.0),
+            position: Vector2::zero(),
+        };
+        let s = Sphere {
+            position: Vector2::zero(),
+            velocity: Vector2::zero(),
+            radius: 1.0,
+        };
+
+        assert!(collides_with_border(&s, &b));
     }
 }

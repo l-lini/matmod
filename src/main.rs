@@ -11,16 +11,16 @@ use wgpu::{
     Buffer, BufferAddress, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor,
     CurrentSurfaceTexture::*, Device, DeviceDescriptor, FragmentState, Instance,
     InstanceDescriptor, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
-    ShaderModule, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface, SurfaceConfiguration,
-    TextureFormat, TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
-    vertex_attr_array,
+    PipelineLayoutDescriptor, PresentMode, PrimitiveState, PrimitiveTopology, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    RequestAdapterOptions, ShaderModule, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface,
+    SurfaceConfiguration, TextureFormat, TextureViewDescriptor, VertexBufferLayout, VertexState,
+    VertexStepMode, vertex_attr_array,
 };
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
@@ -98,7 +98,9 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         let [width, height] = window.inner_size().into();
 
-        let surface_configuration = surface.get_default_config(&adapter, width, height).unwrap();
+        let mut surface_configuration =
+            surface.get_default_config(&adapter, width, height).unwrap();
+        surface_configuration.present_mode = PresentMode::AutoVsync;
 
         surface.configure(&device, &surface_configuration);
 
@@ -237,9 +239,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 spheres.push(Sphere {
                                     position: mouse_world_position,
                                     velocity: Vector2::new(0.0, 0.0),
-                                    acceleration: Vector2::new(0.0, -98.2),
                                     radius: 1.0,
-                                    mass: 1.0,
                                 });
                                 *sphere_step = SphereStep::Size;
                             }
@@ -248,7 +248,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                             let r = (spheres.last().unwrap().position - mouse_world_position)
                                 .magnitude();
                             spheres.last_mut().unwrap().radius = r;
-                            spheres.last_mut().unwrap().mass = r.powi(3);
                             *sphere_step = SphereStep::Speed;
                         }
                         SphereStep::Speed => {
@@ -304,7 +303,11 @@ impl<'s> ApplicationHandler for Game<'s> {
 
                             match (*pause, sphere_step) {
                                 (false, SphereStep::None) => {
-                                    tick(spheres, &borders, delta_duration)
+                                    let b = tick(spheres, &borders, delta_duration);
+
+                                    if b {
+                                        *pause = true;
+                                    }
                                 }
                                 _ => (),
                             }
@@ -409,7 +412,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                             // window.pre_present_notify();
                             queue.present(texture);
 
-                            window.request_redraw()
+                            window.request_redraw();
                         }
                         Suboptimal(_) => todo!("highly recomended to reconfigure"),
                         Timeout => todo!("skip and try again later"),
