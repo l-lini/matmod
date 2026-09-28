@@ -27,36 +27,25 @@ pub fn collide_with_border(sphere: &mut Sphere, border: &Border) {
     let paralell_velocity = sphere.velocity.project_on(perpendicular(border.normal));
     let perpendicular_velocity = sphere.velocity.project_on(border.normal);
 
+    sphere.position = sphere.position.project_on(perpendicular(border.normal))
+        + border.position
+        + border.normal * sphere.radius;
+
     sphere.velocity = paralell_velocity - perpendicular_velocity;
 }
 
-pub fn collides_with_sphere(sphere1: &Sphere, sphere2: &Sphere) -> bool {
-    sphere1.position.distance(sphere2.position) < sphere1.radius + sphere2.radius
-}
-
-pub fn collide_paralell(m1: f32, m2: f32, v1: f32, v2: f32) -> (f32, f32) {
-    dbg!(v1, v2);
-    (v2, v1)
+pub fn collides_with_sphere(sphere1: &Sphere, sphere2: &Sphere, delta_seconds: f32) -> bool {
+    (sphere1.position + sphere1.velocity * delta_seconds)
+        .distance(sphere2.position + sphere2.velocity * delta_seconds)
+        < sphere1.radius + sphere2.radius
 }
 
 pub fn collide_with_sphere(sphere1: &mut Sphere, sphere2: &mut Sphere) {
-    let collision_vector = (sphere1.position - sphere2.position).normalize();
-
-    let u1 = sphere1.velocity.dot(collision_vector);
-    let u2 = sphere2.velocity.dot(collision_vector);
-
-    let sphere1_perpendicular_velocity =
-        sphere1.velocity.project_on(perpendicular(collision_vector));
-    let sphere2_perpendicular_velocity =
-        sphere2.velocity.project_on(perpendicular(collision_vector));
-
-    let (v1, v2) = (u2, u1);
-
-    sphere1.velocity = v1 * collision_vector + sphere1_perpendicular_velocity;
-    sphere2.velocity = v2 * collision_vector + sphere2_perpendicular_velocity;
+    todo!()
 }
 
 pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Duration) -> bool {
+    let delta_seconds = delta_duration.as_secs_f32();
     let mut b = false;
     for i in 0..spheres.len() {
         for border in borders {
@@ -68,25 +57,21 @@ pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Durat
         }
 
         for j in (i + 1)..spheres.len() {
-            dbg!(i, j);
             let [sphere1, sphere2] = spheres.get_disjoint_mut([i, j]).unwrap();
 
-            if collides_with_sphere(sphere1, sphere2) {
+            if collides_with_sphere(sphere1, sphere2, delta_seconds) {
                 collide_with_sphere(sphere1, sphere2);
                 b = true;
             }
         }
     }
 
-    let delta_seconds = delta_duration.as_secs_f32();
     for sphere in spheres {
         sphere.position += sphere.velocity * delta_seconds;
         // sphere.velocity.y -= 9.82;
     }
 
     return b;
-
-    dbg!(delta_seconds);
 }
 
 #[cfg(test)]
