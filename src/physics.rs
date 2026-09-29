@@ -1,10 +1,10 @@
 use cgmath::{Vector2, prelude::*};
 use std::time::Duration;
 
-type Mass = f32;
-type Velocity = f32;
-type Position = f32;
-type Length = f32;
+type Mass = f64;
+type Velocity = f64;
+type Position = f64;
+type Length = f64;
 
 #[derive(Copy, Clone)]
 pub struct Sphere {
@@ -13,9 +13,15 @@ pub struct Sphere {
     pub radius: Length,
 }
 
+impl Sphere {
+    fn mass(&self) -> Mass {
+        self.radius.powi(3)
+    }
+}
+
 pub struct Border {
-    pub normal: Vector2<f32>,
-    pub position: Vector2<f32>,
+    pub normal: Vector2<Length>,
+    pub position: Vector2<Length>,
 }
 
 pub fn collides_with_border(sphere: &Sphere, border: &Border) -> bool {
@@ -24,22 +30,24 @@ pub fn collides_with_border(sphere: &Sphere, border: &Border) -> bool {
     distance < sphere.radius
 }
 
-pub fn perpendicular(v: Vector2<f32>) -> Vector2<f32> {
+pub fn perpendicular(v: Vector2<Velocity>) -> Vector2<Velocity> {
     Vector2::new(v.y, v.x)
 }
 
 pub fn collide_with_border(sphere: &mut Sphere, border: &Border) {
-    let paralell_velocity = sphere.velocity.project_on(perpendicular(border.normal));
-    let perpendicular_velocity = sphere.velocity.project_on(border.normal);
+    let u = sphere.velocity.dot(border.normal.normalize());
 
     sphere.position = sphere.position.project_on(perpendicular(border.normal))
         + border.position
         + border.normal * sphere.radius;
 
-    sphere.velocity = paralell_velocity - perpendicular_velocity;
+    let v = -u;
+
+    sphere.velocity -= u * border.normal.normalize();
+    sphere.velocity += v * border.normal.normalize();
 }
 
-pub fn collides_with_sphere(sphere1: &Sphere, sphere2: &Sphere, delta_seconds: f32) -> bool {
+pub fn collides_with_sphere(sphere1: &Sphere, sphere2: &Sphere, delta_seconds: f64) -> bool {
     (sphere1.position + sphere1.velocity * delta_seconds)
         .distance(sphere2.position + sphere2.velocity * delta_seconds)
         < sphere1.radius + sphere2.radius
@@ -63,8 +71,8 @@ pub fn collide_with_sphere(sphere1: &mut Sphere, sphere2: &mut Sphere) {
     sphere1.velocity -= u1 * cv.normalize();
     sphere2.velocity -= u2 * cv.normalize();
 
-    let m1 = sphere1.radius;
-    let m2 = sphere2.radius;
+    let m1 = sphere1.mass();
+    let m2 = sphere2.mass();
 
     let (v1, v2) = collide_with_sphere_paralell(m1, m2, u1, u2);
 
@@ -73,13 +81,27 @@ pub fn collide_with_sphere(sphere1: &mut Sphere, sphere2: &mut Sphere) {
     sphere2.velocity += v2 * cv.normalize();
 }
 
-pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Duration) -> bool {
-    let delta_seconds = delta_duration.as_secs_f32();
+pub fn tick(
+    spheres: &mut Vec<Sphere>,
+    borders: &[Border],
+    delta_duration: Duration,
+    energies: &mut Vec<f64>,
+) -> bool {
+    let delta_seconds = delta_duration.as_secs_f64();
     let mut b = false;
 
-    for sphere in spheres.iter_mut() {
-        sphere.position += sphere.velocity * delta_seconds;
-        sphere.velocity.y -= 9.82;
+    let mut energy = 0.0;
+
+    for i in 0..spheres.len() {
+        for j in (i + 1)..spheres.len() {
+            let [sphere1, sphere2] = spheres.get_disjoint_mut([i, j]).unwrap();
+
+            if collides_with_sphere(sphere1, sphere2, delta_seconds) {
+                dbg!(energies.iter().sum::<f64>() / energies.len() as f64);
+                collide_with_sphere(sphere1, sphere2);
+                b = true;
+            }
+        }
     }
 
     for i in 0..spheres.len() {
@@ -90,16 +112,17 @@ pub fn tick(spheres: &mut Vec<Sphere>, borders: &[Border], delta_duration: Durat
                 collide_with_border(sphere, border);
             }
         }
-
-        for j in (i + 1)..spheres.len() {
-            let [sphere1, sphere2] = spheres.get_disjoint_mut([i, j]).unwrap();
-
-            if collides_with_sphere(sphere1, sphere2, delta_seconds) {
-                collide_with_sphere(sphere1, sphere2);
-                b = true;
-            }
-        }
     }
+
+    for sphere in spheres.iter_mut() {
+        // sphere.velocity.y -= 9.82 * delta_seconds / 2.0;
+        sphere.position += sphere.velocity * delta_seconds;
+        // sphere.velocity.y -= 9.82 * delta_seconds / 2.0;
+
+        energy += sphere.mass() * sphere.velocity.magnitude2() / 2.0;
+    }
+
+    energies.push(energy);
 
     return b;
 }
@@ -116,7 +139,6 @@ fn collide_with_sphere_paralell(
     let v1 = (inertia + m2 * relative_velocity) / (m1 + m2);
     let v2 = v1 - relative_velocity;
 
-    dbg!(u1, u2, v1, v2);
     (v1, v2)
 }
 

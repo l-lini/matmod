@@ -44,6 +44,7 @@ enum Game<'s> {
     Uninitialized,
     Initialized {
         pause: bool,
+        energies: Vec<f64>,
         sphere_step: SphereStep,
         queue: Queue,
         device: Device,
@@ -55,7 +56,7 @@ enum Game<'s> {
         instant: Instant,
         spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
-        mouse_position: Vector2<f32>,
+        mouse_position: Vector2<f64>,
         surface_configuration: SurfaceConfiguration,
     },
 }
@@ -100,7 +101,7 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         let mut surface_configuration =
             surface.get_default_config(&adapter, width, height).unwrap();
-        surface_configuration.present_mode = PresentMode::AutoVsync;
+        // surface_configuration.present_mode = PresentMode::AutoVsync;
 
         surface.configure(&device, &surface_configuration);
 
@@ -157,6 +158,7 @@ impl<'s> ApplicationHandler for Game<'s> {
         *self = Game::Initialized {
             pause: false,
             sphere_step: SphereStep::None,
+            energies: vec![],
             queue,
             device,
             buffer,
@@ -190,8 +192,8 @@ impl<'s> ApplicationHandler for Game<'s> {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 if let Game::Initialized { mouse_position, .. } = self {
-                    mouse_position.x = position.x as f32;
-                    mouse_position.y = position.y as f32;
+                    mouse_position.x = position.x as f64;
+                    mouse_position.y = position.y as f64;
                 }
             }
             WindowEvent::KeyboardInput {
@@ -220,8 +222,8 @@ impl<'s> ApplicationHandler for Game<'s> {
                 } = self
                 {
                     let mut mouse_world_position = Vector2::new(
-                        mouse_position.x,
-                        surface_configuration.height as f32 - mouse_position.y,
+                        mouse_position.x as f64,
+                        surface_configuration.height as f64 - mouse_position.y,
                     );
                     match sphere_step {
                         SphereStep::None => {
@@ -273,6 +275,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     spheres,
                     instant,
                     pause,
+                    energies,
                     surface_configuration,
                     ..
                 } = self
@@ -295,18 +298,18 @@ impl<'s> ApplicationHandler for Game<'s> {
                                     normal: Vector2::new(1.0, 0.0),
                                 },
                                 Border {
-                                    position: Vector2::new(0.0, height),
+                                    position: Vector2::new(0.0, height as f64),
                                     normal: Vector2::new(0.0, -1.0),
                                 },
                                 Border {
-                                    position: Vector2::new(width, 0.0),
+                                    position: Vector2::new(width as f64, 0.0),
                                     normal: Vector2::new(-1.0, 0.0),
                                 },
                             ];
 
                             match (*pause, sphere_step) {
                                 (false, SphereStep::None) if spheres.len() >= 2 => {
-                                    let b = tick(spheres, &borders, delta_duration);
+                                    let b = tick(spheres, &borders, delta_duration, energies);
 
                                     // if b {
                                     //     *pause = true;
