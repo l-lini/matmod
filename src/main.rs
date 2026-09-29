@@ -223,8 +223,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                         mouse_position.x,
                         surface_configuration.height as f32 - mouse_position.y,
                     );
-                    mouse_world_position.x = mouse_world_position.x.round();
-                    mouse_world_position.y = mouse_world_position.y.round();
                     match sphere_step {
                         SphereStep::None => {
                             let new_spheres: Vec<_> = spheres
@@ -243,21 +241,18 @@ impl<'s> ApplicationHandler for Game<'s> {
                                     velocity: Vector2::new(0.0, 0.0),
                                     radius: 100.0,
                                 });
-                                // *sphere_step = SphereStep::Size;
-                                *sphere_step = SphereStep::Speed;
+                                *sphere_step = SphereStep::Size;
                             }
                         }
-                        // SphereStep::Size => {
-                        //     let r = (spheres.last().unwrap().position - mouse_world_position)
-                        //         .magnitude();
-                        //     spheres.last_mut().unwrap().radius = 100.0;
-                        //     *sphere_step = SphereStep::Speed;
-                        // }
+                        SphereStep::Size => {
+                            let r = (spheres.last().unwrap().position - mouse_world_position)
+                                .magnitude();
+                            spheres.last_mut().unwrap().radius = r;
+                            *sphere_step = SphereStep::Speed;
+                        }
                         SphereStep::Speed => {
                             let mut velocity =
                                 mouse_world_position - spheres.last().unwrap().position;
-                            velocity.x = velocity.x.round();
-                            velocity.y = velocity.y.round();
                             spheres.last_mut().unwrap().velocity = velocity;
 
                             *sphere_step = SphereStep::None;
@@ -313,9 +308,9 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 (false, SphereStep::None) if spheres.len() >= 2 => {
                                     let b = tick(spheres, &borders, delta_duration);
 
-                                    if b {
-                                        *pause = true;
-                                    }
+                                    // if b {
+                                    //     *pause = true;
+                                    // }
                                 }
                                 _ => (),
                             }
