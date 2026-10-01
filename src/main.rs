@@ -26,7 +26,7 @@ use winit::{
 };
 
 const MAX_BALLS: usize = 10_000;
-const METERS_PER_PIXEL: f64 = 0.01;
+const METERS_PER_PIXEL: f64 = 0.001;
 
 #[repr(C, packed)]
 #[derive(NoUninit, Copy, Clone, Debug)]
@@ -99,7 +99,7 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         let [width, height] = window.inner_size().into();
 
-        let /*mut*/ surface_configuration =
+        let mut surface_configuration =
             surface.get_default_config(&adapter, width, height).unwrap();
         // surface_configuration.present_mode = PresentMode::AutoVsync;
 
@@ -227,7 +227,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                     ..
                 } = self
                 {
-                    dbg!(&mouse_world_position);
                     match sphere_step {
                         SphereStep::None => {
                             let new_spheres: Vec<_> = spheres

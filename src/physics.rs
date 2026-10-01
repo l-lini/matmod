@@ -28,7 +28,6 @@ pub fn collides_with_border(sphere: &Sphere, border: &Border) -> bool {
 }
 
 pub fn separate_from_border(sphere: &mut Sphere, border: &Border) {
-    dbg!(sphere.position, border.position, border.normal);
     sphere.position -= signed_distance_to_border(sphere, border) * border.normal.normalize();
 }
 
@@ -93,7 +92,7 @@ pub fn tick(
             let [sphere1, sphere2] = spheres.get_disjoint_mut([i, j]).unwrap();
 
             if collides_with_sphere(sphere1, sphere2, delta_seconds) {
-                dbg!(energies.iter().sum::<f64>() / energies.len() as f64);
+                // dbg!(energies.iter().sum::<f64>() / energies.len() as f64);
                 collide_with_sphere(sphere1, sphere2);
                 b = true;
             }
