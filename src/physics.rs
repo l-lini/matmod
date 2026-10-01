@@ -1,46 +1,41 @@
-use cgmath::{Vector2, prelude::*};
+use cgmath::{Vector3, prelude::*};
 use std::time::Duration;
-
-type Mass = f64;
-type Velocity = f64;
-type Position = f64;
-type Length = f64;
 
 #[derive(Copy, Clone)]
 pub struct Sphere {
-    pub position: Vector2<Position>,
-    pub velocity: Vector2<Velocity>,
-    pub radius: Length,
+    pub position: Vector3<f64>,
+    pub velocity: Vector3<f64>,
+    pub radius: f64,
 }
 
 impl Sphere {
-    fn mass(&self) -> Mass {
+    fn mass(&self) -> f64 {
         self.radius.powi(3)
     }
 }
 
 pub struct Border {
-    pub normal: Vector2<Length>,
-    pub position: Vector2<Length>,
+    pub normal: Vector3<f64>,
+    pub position: f64,
+}
+
+pub fn signed_distance_to_border(sphere: &Sphere, border: &Border) -> f64 {
+    border.position + sphere.position.dot(border.normal.normalize()) - sphere.radius
 }
 
 pub fn collides_with_border(sphere: &Sphere, border: &Border) -> bool {
-    let distance = (sphere.position - border.position).dot(border.normal.normalize());
-
-    distance < sphere.radius
+    signed_distance_to_border(sphere, border) < 0.0
 }
 
-pub fn perpendicular(v: Vector2<Velocity>) -> Vector2<Velocity> {
-    Vector2::new(v.y, v.x)
+pub fn separate_from_border(sphere: &mut Sphere, border: &Border) {
+    dbg!(sphere.position, border.position, border.normal);
+    sphere.position -= signed_distance_to_border(sphere, border) * border.normal.normalize();
 }
 
 pub fn collide_with_border(sphere: &mut Sphere, border: &Border) {
+    separate_from_border(sphere, border);
+
     let u = sphere.velocity.dot(border.normal.normalize());
-
-    sphere.position = sphere.position.project_on(perpendicular(border.normal))
-        + border.position
-        + border.normal * sphere.radius;
-
     let v = -u;
 
     sphere.velocity -= u * border.normal.normalize();
@@ -116,9 +111,8 @@ pub fn tick(
     }
 
     for sphere in spheres.iter_mut() {
-        // sphere.velocity.y -= 9.82 * delta_seconds / 2.0;
         sphere.position += sphere.velocity * delta_seconds;
-        // sphere.velocity.y -= 9.82 * delta_seconds / 2.0;
+        sphere.velocity.y -= 9.82 * delta_seconds;
 
         energy += sphere.mass() * sphere.velocity.magnitude2() / 2.0;
     }
@@ -128,12 +122,7 @@ pub fn tick(
     return b;
 }
 
-fn collide_with_sphere_paralell(
-    m1: Mass,
-    m2: Mass,
-    u1: Velocity,
-    u2: Velocity,
-) -> (Velocity, Velocity) {
+fn collide_with_sphere_paralell(m1: f64, m2: f64, u1: f64, u2: f64) -> (f64, f64) {
     let inertia = m1 * u1 + m2 * u2;
     let relative_velocity = u2 - u1;
 
@@ -171,21 +160,21 @@ mod tests {
 
     #[test]
     fn seprate_spheres() {
-        let s = |x, y| Sphere {
-            position: Vector2::new(x, y),
-            velocity: Vector2::zero(),
+        let s = |x, y, z| Sphere {
+            position: Vector3::new(x, y, z),
+            velocity: Vector3::zero(),
             radius: 100.0,
         };
 
-        let mut s1 = s(0.0, 0.0);
-        let mut s2 = s(50.0, 0.0);
+        let mut s1 = s(0.0, 0.0, 0.0);
+        let mut s2 = s(50.0, 0.0, 50.0);
 
         separate_spheres(&mut s1, &mut s2);
 
         assert!(s1.position.distance(s2.position) >= 200.0);
 
-        let mut s1 = s(0.0, 0.0);
-        let mut s2 = s(100.0, 100.0);
+        let mut s1 = s(0.0, 0.0, 0.0);
+        let mut s2 = s(100.0, 100.0, 100.0);
 
         separate_spheres(&mut s1, &mut s2);
 
@@ -195,12 +184,12 @@ mod tests {
     #[test]
     fn collides_with_border_inside_border() {
         let b = Border {
-            normal: Vector2::new(-1.0, 0.0),
-            position: Vector2::zero(),
+            normal: Vector3::new(-1.0, 0.0, 0.0),
+            position: 0.0,
         };
         let s = Sphere {
-            position: Vector2::zero(),
-            velocity: Vector2::zero(),
+            position: Vector3::zero(),
+            velocity: Vector3::zero(),
             radius: 1.0,
         };
 

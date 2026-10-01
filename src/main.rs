@@ -1,5 +1,5 @@
 use bytemuck::NoUninit;
-use cgmath::{Vector2, prelude::*};
+use cgmath::{Vector3, prelude::*};
 use spheres::physics::*;
 use std::{
     borrow::Cow,
@@ -37,7 +37,6 @@ struct Vertex {
 enum SphereStep {
     None,
     Size,
-    Speed,
 }
 
 enum Game<'s> {
@@ -56,7 +55,7 @@ enum Game<'s> {
         instant: Instant,
         spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
-        mouse_position: Vector2<f64>,
+        mouse_position: Vector3<f64>,
         surface_configuration: SurfaceConfiguration,
     },
 }
@@ -99,7 +98,7 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         let [width, height] = window.inner_size().into();
 
-        let mut surface_configuration =
+        let /*mut*/ surface_configuration =
             surface.get_default_config(&adapter, width, height).unwrap();
         // surface_configuration.present_mode = PresentMode::AutoVsync;
 
@@ -169,7 +168,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             pipeline,
             instant: Instant::now(),
             spheres: vec![],
-            mouse_position: Vector2::new(0.0, 0.0),
+            mouse_position: Vector3::new(0.0, 0.0, 0.0),
             surface_configuration,
         };
     }
@@ -221,9 +220,10 @@ impl<'s> ApplicationHandler for Game<'s> {
                     ..
                 } = self
                 {
-                    let mut mouse_world_position = Vector2::new(
+                    let mut mouse_world_position = Vector3::new(
                         mouse_position.x as f64,
                         surface_configuration.height as f64 - mouse_position.y,
+                        0.0,
                     );
                     match sphere_step {
                         SphereStep::None => {
@@ -240,8 +240,8 @@ impl<'s> ApplicationHandler for Game<'s> {
                             } else {
                                 spheres.push(Sphere {
                                     position: mouse_world_position,
-                                    velocity: Vector2::new(0.0, 0.0),
-                                    radius: 100.0,
+                                    velocity: Vector3::zero(),
+                                    radius: 50.0,
                                 });
                                 *sphere_step = SphereStep::Size;
                             }
@@ -250,13 +250,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                             let r = (spheres.last().unwrap().position - mouse_world_position)
                                 .magnitude();
                             spheres.last_mut().unwrap().radius = r;
-                            *sphere_step = SphereStep::Speed;
-                        }
-                        SphereStep::Speed => {
-                            let mut velocity =
-                                mouse_world_position - spheres.last().unwrap().position;
-                            spheres.last_mut().unwrap().velocity = velocity;
-
                             *sphere_step = SphereStep::None;
                         }
                         _ => (),
@@ -290,20 +283,20 @@ impl<'s> ApplicationHandler for Game<'s> {
 
                             let borders = vec![
                                 Border {
-                                    position: Vector2::new(0.0, 0.0),
-                                    normal: Vector2::new(0.0, 1.0),
+                                    position: 0.0,
+                                    normal: Vector3::new(0.0, 1.0, 0.0),
                                 },
                                 Border {
-                                    position: Vector2::new(0.0, 0.0),
-                                    normal: Vector2::new(1.0, 0.0),
+                                    position: 0.0,
+                                    normal: Vector3::new(1.0, 0.0, 0.0),
                                 },
                                 Border {
-                                    position: Vector2::new(0.0, height as f64),
-                                    normal: Vector2::new(0.0, -1.0),
+                                    position: height as f64,
+                                    normal: Vector3::new(0.0, -1.0, 0.0),
                                 },
                                 Border {
-                                    position: Vector2::new(width as f64, 0.0),
-                                    normal: Vector2::new(-1.0, 0.0),
+                                    position: width as f64,
+                                    normal: Vector3::new(-1.0, 0.0, 0.0),
                                 },
                             ];
 
@@ -322,7 +315,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 .iter()
                                 .map(
                                     |Sphere {
-                                         position: Vector2 { x, y },
+                                         position: Vector3 { x, y, .. },
                                          radius,
                                          ..
                                      }| {
