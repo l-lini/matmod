@@ -56,7 +56,8 @@ pub fn collides_with_sphere(sphere1: &Sphere, sphere2: &Sphere, delta_seconds: f
 pub fn separate_spheres(sphere1: &mut Sphere, sphere2: &mut Sphere) {
     let cv = sphere2.position - sphere1.position;
 
-    sphere1.position += -cv.normalize() * (sphere1.radius + sphere2.radius - cv.magnitude())
+    sphere1.position -= cv.normalize() * (sphere1.radius + sphere2.radius - cv.magnitude()) / 2.0;
+    sphere2.position += cv.normalize() * (sphere1.radius + sphere2.radius - cv.magnitude()) / 2.0;
 }
 
 pub fn collide_with_sphere(sphere1: &mut Sphere, sphere2: &mut Sphere) {
