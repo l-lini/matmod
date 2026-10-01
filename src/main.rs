@@ -1,11 +1,7 @@
 use bytemuck::NoUninit;
 use cgmath::{Vector3, prelude::*};
 use spheres::physics::*;
-use std::{
-    borrow::Cow,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{borrow::Cow, sync::Arc, time::Instant};
 use tokio::runtime::Runtime;
 use wgpu::{
     Buffer, BufferAddress, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor,
@@ -13,25 +9,25 @@ use wgpu::{
     InstanceDescriptor, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
     PipelineLayoutDescriptor, PresentMode, PrimitiveState, PrimitiveTopology, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderModule, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface,
+    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface,
     SurfaceConfiguration, TextureFormat, TextureViewDescriptor, VertexBufferLayout, VertexState,
     VertexStepMode, vertex_attr_array,
 };
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
 
 const MAX_BALLS: usize = 10_000;
-const METERS_PER_PIXEL: f64 = 0.001;
+const METERS_PER_PIXEL: f64 = 0.01;
 
 #[repr(C, packed)]
 #[derive(NoUninit, Copy, Clone, Debug)]
 struct Vertex {
-    position: [f32; 2],
+    position: [f32; 3],
     texture_position: [f32; 2],
 }
 
@@ -51,8 +47,8 @@ enum Game<'s> {
         window: Arc<Window>,
         buffer: Buffer,
         surface: Surface<'s>,
-        instance: Instance,
-        shader: ShaderModule,
+        // instance: Instance,
+        // shader: ShaderModule,
         instant: Instant,
         spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
@@ -101,7 +97,7 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         let mut surface_configuration =
             surface.get_default_config(&adapter, width, height).unwrap();
-        // surface_configuration.present_mode = PresentMode::AutoVsync;
+        surface_configuration.present_mode = PresentMode::Fifo;
 
         surface.configure(&device, &surface_configuration);
 
@@ -126,7 +122,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     array_stride: size_of::<Vertex>() as BufferAddress,
                     step_mode: VertexStepMode::Vertex,
                     attributes: &vertex_attr_array![
-                        0 => Float32x2,
+                        0 => Float32x3,
                         1 => Float32x2,
                     ],
                 })],
@@ -164,8 +160,8 @@ impl<'s> ApplicationHandler for Game<'s> {
             buffer,
             window,
             surface,
-            instance,
-            shader,
+            // instance,
+            // shader,
             pipeline,
             instant: Instant::now(),
             spheres: vec![],
@@ -243,10 +239,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 spheres.push(Sphere {
                                     position: *mouse_world_position,
                                     velocity: Vector3::zero(),
-                                    radius: 50.0 / METERS_PER_PIXEL, // TODO: Change radius by
-                                                                     // scroll, or live update a
-                                                                     // see through ball with
-                                                                     // radius
+                                    radius: 0.0,
                                 });
                                 *sphere_step = SphereStep::Size;
                             }
@@ -257,7 +250,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                             spheres.last_mut().unwrap().radius = r;
                             *sphere_step = SphereStep::None;
                         }
-                        _ => (),
                     }
                 }
             }
@@ -313,12 +305,8 @@ impl<'s> ApplicationHandler for Game<'s> {
                             ];
 
                             match (*pause, &sphere_step) {
-                                (false, SphereStep::None) if spheres.len() >= 2 => {
-                                    let b = tick(spheres, &borders, delta_time, energies);
-
-                                    // if b {
-                                    //     *pause = true;
-                                    // }
+                                (false, SphereStep::None) => {
+                                    _ = tick(spheres, &borders, delta_time, energies);
                                 }
                                 _ => (),
                             }
@@ -364,27 +352,27 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 .map(|(x_min, x_max, y_min, y_max)| {
                                     [
                                         Vertex {
-                                            position: [x_min, y_min],
+                                            position: [x_min, y_min, 0.0],
                                             texture_position: [-1.0, -1.0],
                                         },
                                         Vertex {
-                                            position: [x_min, y_max],
+                                            position: [x_min, y_max, 0.0],
                                             texture_position: [-1.0, 1.0],
                                         },
                                         Vertex {
-                                            position: [x_max, y_max],
+                                            position: [x_max, y_max, 0.0],
                                             texture_position: [1.0, 1.0],
                                         },
                                         Vertex {
-                                            position: [x_max, y_max],
+                                            position: [x_max, y_max, 0.0],
                                             texture_position: [1.0, 1.0],
                                         },
                                         Vertex {
-                                            position: [x_max, y_min],
+                                            position: [x_max, y_min, 0.0],
                                             texture_position: [1.0, -1.0],
                                         },
                                         Vertex {
-                                            position: [x_min, y_min],
+                                            position: [x_min, y_min, 0.0],
                                             texture_position: [-1.0, -1.0],
                                         },
                                     ]
@@ -428,18 +416,18 @@ impl<'s> ApplicationHandler for Game<'s> {
 
                             window.request_redraw();
                         }
-                        Suboptimal(_) => todo!("highly recomended to reconfigure"),
-                        Timeout => todo!("skip and try again later"),
-                        Occluded => todo!("skip frame and wait until not occluded"),
-                        Outdated => todo!("configure and try again"),
-                        Lost => todo!("check if device lost, try to recreate surface"),
-                        Validation => todo!("attend to the validation error"),
+                        e => todo!("{:?}", e),
                     }
                 }
             }
-            _ => {
-                // dbg!(event);
-            }
+            WindowEvent::ScaleFactorChanged { .. } => (),
+            WindowEvent::ModifiersChanged { .. } => (),
+            WindowEvent::Focused { .. } => (),
+            WindowEvent::CursorEntered { .. } => (),
+            WindowEvent::CursorLeft { .. } => (),
+            WindowEvent::MouseInput { .. } => (),
+            WindowEvent::KeyboardInput { .. } => (),
+            e => todo!("{:?}", e),
         }
     }
 }
