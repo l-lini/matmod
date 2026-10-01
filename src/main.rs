@@ -26,6 +26,7 @@ use winit::{
 };
 
 const MAX_BALLS: usize = 10_000;
+const METERS_PER_PIXEL: f64 = 0.01;
 
 #[repr(C, packed)]
 #[derive(NoUninit, Copy, Clone, Debug)]
@@ -55,7 +56,7 @@ enum Game<'s> {
         instant: Instant,
         spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
-        mouse_position: Vector3<f64>,
+        mouse_world_position: Vector3<f64>,
         surface_configuration: SurfaceConfiguration,
     },
 }
@@ -168,7 +169,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             pipeline,
             instant: Instant::now(),
             spheres: vec![],
-            mouse_position: Vector3::new(0.0, 0.0, 0.0),
+            mouse_world_position: Vector3::new(0.0, 0.0, 0.0),
             surface_configuration,
         };
     }
@@ -190,9 +191,16 @@ impl<'s> ApplicationHandler for Game<'s> {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if let Game::Initialized { mouse_position, .. } = self {
-                    mouse_position.x = position.x as f64;
-                    mouse_position.y = position.y as f64;
+                if let Game::Initialized {
+                    mouse_world_position,
+                    surface_configuration,
+                    ..
+                } = self
+                {
+                    mouse_world_position.x = position.x as f64 * METERS_PER_PIXEL;
+                    mouse_world_position.y = (surface_configuration.height as f64
+                        - position.y as f64)
+                        * METERS_PER_PIXEL;
                 }
             }
             WindowEvent::KeyboardInput {
@@ -213,24 +221,19 @@ impl<'s> ApplicationHandler for Game<'s> {
                 ..
             } => {
                 if let Game::Initialized {
-                    surface_configuration,
-                    mouse_position,
+                    mouse_world_position,
                     spheres,
                     sphere_step,
                     ..
                 } = self
                 {
-                    let mut mouse_world_position = Vector3::new(
-                        mouse_position.x as f64,
-                        surface_configuration.height as f64 - mouse_position.y,
-                        0.0,
-                    );
+                    dbg!(&mouse_world_position);
                     match sphere_step {
                         SphereStep::None => {
                             let new_spheres: Vec<_> = spheres
                                 .iter()
                                 .filter(|sphere| {
-                                    (sphere.position - mouse_world_position).magnitude()
+                                    (sphere.position - *mouse_world_position).magnitude()
                                         > sphere.radius
                                 })
                                 .map(|&sphere| sphere.clone())
@@ -239,15 +242,18 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 *spheres = new_spheres;
                             } else {
                                 spheres.push(Sphere {
-                                    position: mouse_world_position,
+                                    position: *mouse_world_position,
                                     velocity: Vector3::zero(),
-                                    radius: 50.0,
+                                    radius: 50.0 / METERS_PER_PIXEL, // TODO: Change radius by
+                                                                     // scroll, or live update a
+                                                                     // see through ball with
+                                                                     // radius
                                 });
                                 *sphere_step = SphereStep::Size;
                             }
                         }
                         SphereStep::Size => {
-                            let r = (spheres.last().unwrap().position - mouse_world_position)
+                            let r = (spheres.last().unwrap().position - *mouse_world_position)
                                 .magnitude();
                             spheres.last_mut().unwrap().radius = r;
                             *sphere_step = SphereStep::None;
@@ -263,6 +269,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     queue,
                     device,
                     window,
+                    mouse_world_position,
                     pipeline,
                     buffer,
                     spheres,
@@ -275,10 +282,15 @@ impl<'s> ApplicationHandler for Game<'s> {
                 {
                     match surface.get_current_texture() {
                         Success(texture) => {
-                            let width = surface_configuration.width as f32;
-                            let height = surface_configuration.height as f32;
+                            // Pixels
+                            let screen_width = surface_configuration.width as f32;
+                            let screen_height = surface_configuration.height as f32;
 
-                            let delta_duration = instant.elapsed();
+                            // Meters
+                            let box_width = screen_width as f64 * METERS_PER_PIXEL;
+                            let box_height = screen_height as f64 * METERS_PER_PIXEL;
+
+                            let delta_time = instant.elapsed();
                             *instant = Instant::now();
 
                             let borders = vec![
@@ -291,18 +303,19 @@ impl<'s> ApplicationHandler for Game<'s> {
                                     normal: Vector3::new(1.0, 0.0, 0.0),
                                 },
                                 Border {
-                                    position: height as f64,
+                                    position: box_height,
                                     normal: Vector3::new(0.0, -1.0, 0.0),
                                 },
                                 Border {
-                                    position: width as f64,
+                                    position: box_width,
                                     normal: Vector3::new(-1.0, 0.0, 0.0),
                                 },
+                                // TODO: borders on z-axis
                             ];
 
-                            match (*pause, sphere_step) {
+                            match (*pause, &sphere_step) {
                                 (false, SphereStep::None) if spheres.len() >= 2 => {
-                                    let b = tick(spheres, &borders, delta_duration, energies);
+                                    let b = tick(spheres, &borders, delta_time, energies);
 
                                     // if b {
                                     //     *pause = true;
@@ -311,6 +324,18 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 _ => (),
                             }
 
+                            let mut spheres = spheres.clone();
+                            match &sphere_step {
+                                SphereStep::None => spheres.push(Sphere {
+                                    position: *mouse_world_position,
+                                    radius: 0.0,
+                                    velocity: Vector3::zero(),
+                                }),
+                                SphereStep::Size => {
+                                    let sphere = spheres.last_mut().unwrap();
+                                    sphere.radius = sphere.position.distance(*mouse_world_position);
+                                }
+                            }
                             let verticies: Vec<Vertex> = spheres
                                 .iter()
                                 .map(
@@ -319,34 +344,25 @@ impl<'s> ApplicationHandler for Game<'s> {
                                          radius,
                                          ..
                                      }| {
-                                        (x - radius, y - radius, x + radius, y + radius)
+                                        let x_min = x - radius;
+                                        let x_max = x + radius;
+                                        let y_min = y - radius;
+                                        let y_max = y + radius;
+
+                                        let x_min = x_min / METERS_PER_PIXEL;
+                                        let x_max = x_max / METERS_PER_PIXEL;
+                                        let y_min = y_min / METERS_PER_PIXEL;
+                                        let y_max = y_max / METERS_PER_PIXEL;
+
+                                        let x_min = (x_min as f32 / screen_width - 0.5) * 2.0;
+                                        let x_max = (x_max as f32 / screen_width - 0.5) * 2.0;
+                                        let y_min = (y_min as f32 / screen_height - 0.5) * 2.0;
+                                        let y_max = (y_max as f32 / screen_height - 0.5) * 2.0;
+
+                                        (x_min, x_max, y_min, y_max)
                                     },
                                 )
-                                .map(|(x_min, y_min, x_max, y_max)| {
-                                    (
-                                        x_min as i32 - width as i32 / 2,
-                                        y_min as i32 - height as i32 / 2,
-                                        x_max as i32 - width as i32 / 2,
-                                        y_max as i32 - height as i32 / 2,
-                                    )
-                                })
-                                .map(
-                                    |(
-                                        centered_x_min,
-                                        centered_y_min,
-                                        centered_x_max,
-                                        centered_y_max,
-                                    )| {
-                                        (
-                                            centered_x_min as f32 / width,
-                                            centered_y_min as f32 / height,
-                                            centered_x_max as f32 / width,
-                                            centered_y_max as f32 / height,
-                                        )
-                                    },
-                                )
-                                .map(|(x, y, x_, y_)| (2.0 * x, 2.0 * y, 2.0 * x_, 2.0 * y_))
-                                .map(|(x_min, y_min, x_max, y_max)| {
+                                .map(|(x_min, x_max, y_min, y_max)| {
                                     [
                                         Vertex {
                                             position: [x_min, y_min],
