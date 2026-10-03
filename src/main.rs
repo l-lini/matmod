@@ -40,7 +40,7 @@ enum Game<'s> {
     Uninitialized,
     Initialized {
         pause: bool,
-        energies: Vec<f64>,
+        physics: Physics,
         sphere_step: SphereStep,
         queue: Queue,
         device: Device,
@@ -50,7 +50,6 @@ enum Game<'s> {
         // instance: Instance,
         // shader: ShaderModule,
         instant: Instant,
-        spheres: Vec<Sphere>,
         pipeline: RenderPipeline,
         mouse_world_position: Vector3<f64>,
         surface_configuration: SurfaceConfiguration,
@@ -153,8 +152,31 @@ impl<'s> ApplicationHandler for Game<'s> {
 
         *self = Game::Initialized {
             pause: false,
+            physics: Physics {
+                balls: vec![],
+                walls: vec![
+                    Border {
+                        position: 0.0,
+                        normal: Vector3::new(0.0, 1.0, 0.0),
+                    },
+                    Border {
+                        position: 0.0,
+                        normal: Vector3::new(1.0, 0.0, 0.0),
+                    },
+                    Border {
+                        position: 3.0,
+                        normal: Vector3::new(0.0, -1.0, 0.0),
+                    },
+                    Border {
+                        position: 3.0,
+                        normal: Vector3::new(-1.0, 0.0, 0.0),
+                    },
+                    // TODO: borders on z-axis
+                ],
+                gravity: 9.82,
+                energies: vec![],
+            },
             sphere_step: SphereStep::None,
-            energies: vec![],
             queue,
             device,
             buffer,
@@ -164,7 +186,6 @@ impl<'s> ApplicationHandler for Game<'s> {
             // shader,
             pipeline,
             instant: Instant::now(),
-            spheres: vec![],
             mouse_world_position: Vector3::new(0.0, 0.0, 0.0),
             surface_configuration,
         };
@@ -218,14 +239,15 @@ impl<'s> ApplicationHandler for Game<'s> {
             } => {
                 if let Game::Initialized {
                     mouse_world_position,
-                    spheres,
+                    physics,
                     sphere_step,
                     ..
                 } = self
                 {
                     match sphere_step {
                         SphereStep::None => {
-                            let new_spheres: Vec<_> = spheres
+                            let new_spheres: Vec<_> = physics
+                                .balls
                                 .iter()
                                 .filter(|sphere| {
                                     (sphere.position - *mouse_world_position).magnitude()
@@ -233,10 +255,10 @@ impl<'s> ApplicationHandler for Game<'s> {
                                 })
                                 .map(|&sphere| sphere.clone())
                                 .collect();
-                            if new_spheres.len() < spheres.len() {
-                                *spheres = new_spheres;
+                            if new_spheres.len() < physics.balls.len() {
+                                physics.balls = new_spheres;
                             } else {
-                                spheres.push(Sphere {
+                                physics.balls.push(Sphere {
                                     position: *mouse_world_position,
                                     velocity: Vector3::zero(),
                                     radius: 0.0,
@@ -245,9 +267,10 @@ impl<'s> ApplicationHandler for Game<'s> {
                             }
                         }
                         SphereStep::Size => {
-                            let r = (spheres.last().unwrap().position - *mouse_world_position)
+                            let r = (physics.balls.last().unwrap().position
+                                - *mouse_world_position)
                                 .magnitude();
-                            spheres.last_mut().unwrap().radius = r;
+                            physics.balls.last_mut().unwrap().radius = r;
                             *sphere_step = SphereStep::None;
                         }
                     }
@@ -263,10 +286,9 @@ impl<'s> ApplicationHandler for Game<'s> {
                     mouse_world_position,
                     pipeline,
                     buffer,
-                    spheres,
+                    physics,
                     instant,
                     pause,
-                    energies,
                     surface_configuration,
                     ..
                 } = self
@@ -284,34 +306,12 @@ impl<'s> ApplicationHandler for Game<'s> {
                             let delta_time = instant.elapsed();
                             *instant = Instant::now();
 
-                            let borders = vec![
-                                Border {
-                                    position: 0.0,
-                                    normal: Vector3::new(0.0, 1.0, 0.0),
-                                },
-                                Border {
-                                    position: 0.0,
-                                    normal: Vector3::new(1.0, 0.0, 0.0),
-                                },
-                                Border {
-                                    position: box_height,
-                                    normal: Vector3::new(0.0, -1.0, 0.0),
-                                },
-                                Border {
-                                    position: box_width,
-                                    normal: Vector3::new(-1.0, 0.0, 0.0),
-                                },
-                                // TODO: borders on z-axis
-                            ];
-
                             match (*pause, &sphere_step) {
-                                (false, SphereStep::None) => {
-                                    _ = tick(spheres, &borders, delta_time, energies);
-                                }
+                                (false, SphereStep::None) => _ = physics.tick(delta_time),
                                 _ => (),
                             }
 
-                            let mut spheres = spheres.clone();
+                            let mut spheres = physics.balls.clone();
                             match &sphere_step {
                                 SphereStep::None => spheres.push(Sphere {
                                     position: *mouse_world_position,

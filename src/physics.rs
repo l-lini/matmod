@@ -1,6 +1,55 @@
 use cgmath::{Vector3, prelude::*};
 use std::time::Duration;
 
+pub struct Physics {
+    pub balls: Vec<Sphere>,
+    pub walls: Vec<Border>,
+    pub gravity: f64,
+    pub energies: Vec<f64>,
+}
+
+impl Physics {
+    pub fn tick(&mut self, delta_duration: Duration) -> bool {
+        let delta_seconds = delta_duration.as_secs_f64();
+        let mut b = false;
+
+        let mut energy = 0.0;
+
+        for i in 0..self.balls.len() {
+            for j in (i + 1)..self.balls.len() {
+                let [sphere1, sphere2] = self.balls.get_disjoint_mut([i, j]).unwrap();
+
+                if collides_with_sphere(sphere1, sphere2, delta_seconds) {
+                    // dbg!(energies.iter().sum::<f64>() / energies.len() as f64);
+                    collide_with_sphere(sphere1, sphere2);
+                    b = true;
+                }
+            }
+        }
+
+        for i in 0..self.balls.len() {
+            for border in &self.walls {
+                let sphere = self.balls.get_mut(i).unwrap();
+
+                if collides_with_border(sphere, border) {
+                    collide_with_border(sphere, border);
+                }
+            }
+        }
+
+        for sphere in self.balls.iter_mut() {
+            sphere.position += sphere.velocity * delta_seconds;
+            sphere.velocity.y -= 9.82 * delta_seconds;
+
+            energy += sphere.mass() * sphere.velocity.magnitude2() / 2.0;
+        }
+
+        self.energies.push(energy);
+
+        return b;
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Sphere {
     pub position: Vector3<f64>,
@@ -74,51 +123,6 @@ pub fn collide_with_sphere(sphere1: &mut Sphere, sphere2: &mut Sphere) {
     // Add new paralell velocity
     sphere1.velocity += v1 * cv.normalize();
     sphere2.velocity += v2 * cv.normalize();
-}
-
-pub fn tick(
-    spheres: &mut Vec<Sphere>,
-    borders: &[Border],
-    delta_duration: Duration,
-    energies: &mut Vec<f64>,
-) -> bool {
-    let delta_seconds = delta_duration.as_secs_f64();
-    let mut b = false;
-
-    let mut energy = 0.0;
-
-    for i in 0..spheres.len() {
-        for j in (i + 1)..spheres.len() {
-            let [sphere1, sphere2] = spheres.get_disjoint_mut([i, j]).unwrap();
-
-            if collides_with_sphere(sphere1, sphere2, delta_seconds) {
-                // dbg!(energies.iter().sum::<f64>() / energies.len() as f64);
-                collide_with_sphere(sphere1, sphere2);
-                b = true;
-            }
-        }
-    }
-
-    for i in 0..spheres.len() {
-        for border in borders {
-            let sphere = spheres.get_mut(i).unwrap();
-
-            if collides_with_border(sphere, border) {
-                collide_with_border(sphere, border);
-            }
-        }
-    }
-
-    for sphere in spheres.iter_mut() {
-        sphere.position += sphere.velocity * delta_seconds;
-        sphere.velocity.y -= 9.82 * delta_seconds;
-
-        energy += sphere.mass() * sphere.velocity.magnitude2() / 2.0;
-    }
-
-    energies.push(energy);
-
-    return b;
 }
 
 fn collide_with_sphere_paralell(m1: f64, m2: f64, u1: f64, u2: f64) -> (f64, f64) {
