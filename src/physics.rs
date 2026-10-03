@@ -50,7 +50,7 @@ impl Physics {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Sphere {
     pub position: Vector3<f64>,
     pub velocity: Vector3<f64>,
@@ -63,6 +63,7 @@ impl Sphere {
     }
 }
 
+#[derive(Debug)]
 pub struct Border {
     pub normal: Vector3<f64>,
     pub position: f64,
