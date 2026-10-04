@@ -1,12 +1,14 @@
+@binding(0) @group(0) var<uniform> camera_matrix: mat4x4f;
+
 struct Vertex {
-    @location(0) position: vec2f,
+    @location(0) position: vec4f,
     @location(1) texture_position: vec2f,
 };
 
 @vertex
 fn vs_main(vertex: Vertex) -> VertexOutput {
     var vertex_output: VertexOutput;
-    vertex_output.position = vec4f(vertex.position, 0.0, 1.0);
+    vertex_output.position = camera_matrix * vertex.position;
     vertex_output.texture_position = vertex.texture_position;
 
     return vertex_output;

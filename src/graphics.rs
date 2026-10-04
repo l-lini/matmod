@@ -16,7 +16,7 @@ use wgpu::{
 };
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
-const MAX_BALLS: usize = 10_000;
+const MAX_BALLS: u64 = 10_000;
 
 const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
@@ -24,25 +24,35 @@ const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
 
 #[repr(C, packed)]
 #[derive(NoUninit, Copy, Clone, Debug)]
-pub struct Vertex {
+pub struct BoxVertex {
     pub position: [f32; 4],
+}
+
+#[repr(C, packed)]
+#[derive(NoUninit, Copy, Clone, Debug)]
+pub struct BallVertex {
+    pub position: [f32; 4],
+    pub texture_position: [f32; 2],
 }
 
 pub struct Graphics<'surface> {
     queue: Queue,
     device: Device,
     window: Arc<Window>,
-    vertex_buffer: Buffer,
+    box_vertex_buffer: Buffer,
+    ball_vertex_buffer: Buffer,
     camera_buffer: Buffer,
     bind_group: BindGroup,
     view_matrix: Matrix4<f32>,
     projection_matrix: Matrix4<f32>,
-    verticies: u32,
+    box_verticies: u32,
+    ball_verticies: u32,
     surface: Surface<'surface>,
     near: f32,
     far: f32,
     fovy: Rad<f32>,
-    pipeline: RenderPipeline,
+    box_pipeline: RenderPipeline,
+    ball_pipeline: RenderPipeline,
     surface_configuration: SurfaceConfiguration,
 }
 
@@ -53,7 +63,7 @@ impl<'surface> Graphics<'surface> {
         fovy: Rad<f32>,
         near: f32,
         far: f32,
-        verticies: &[Vertex],
+        box_verticies: &[BoxVertex],
     ) -> Self {
         let window = Arc::new(
             event_loop
@@ -90,15 +100,20 @@ impl<'surface> Graphics<'surface> {
 
         surface.configure(&device, &surface_configuration);
 
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
+        let wireframe_shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("wireframe_shader.wgsl"))),
         });
 
-        let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
+        let ball_shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: None,
+            source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("ball_shader.wgsl"))),
+        });
+
+        let box_vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Vertex buffer"),
             usage: BufferUsages::VERTEX,
-            contents: bytemuck::cast_slice(verticies),
+            contents: bytemuck::cast_slice(box_verticies),
         });
 
         let projection_matrix = perspective(fovy, width as f32 / height as f32, near, far);
@@ -134,20 +149,20 @@ impl<'surface> Graphics<'surface> {
             label: Some("Bind group"),
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        let box_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("Pipeline layout"),
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+        let box_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
-            layout: Some(&pipeline_layout),
+            layout: Some(&box_pipeline_layout),
             vertex: VertexState {
-                module: &shader,
+                module: &wireframe_shader,
                 entry_point: Some("vs_main"),
                 buffers: &vec![Some(VertexBufferLayout {
-                    array_stride: size_of::<Vertex>() as BufferAddress,
+                    array_stride: size_of::<BoxVertex>() as BufferAddress,
                     step_mode: VertexStepMode::Vertex,
                     attributes: &vertex_attr_array![
                         0 => Float32x4,
@@ -159,7 +174,7 @@ impl<'surface> Graphics<'surface> {
                 },
             },
             fragment: Some(FragmentState {
-                module: &shader,
+                module: &wireframe_shader,
                 entry_point: Some("fs_main"),
                 targets: &vec![Some(TextureFormat::Bgra8UnormSrgb.into())],
                 compilation_options: PipelineCompilationOptions {
@@ -178,25 +193,87 @@ impl<'surface> Graphics<'surface> {
             cache: None,
         });
 
+        let ball_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Pipeline layout"),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+
+        let ball_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: None,
+            layout: Some(&ball_pipeline_layout),
+            vertex: VertexState {
+                module: &ball_shader,
+                entry_point: Some("vs_main"),
+                buffers: &vec![Some(VertexBufferLayout {
+                    array_stride: size_of::<BallVertex>() as BufferAddress,
+                    step_mode: VertexStepMode::Vertex,
+                    attributes: &vertex_attr_array![
+                        0 => Float32x4,
+                        1 => Float32x2,
+                    ],
+                })],
+                compilation_options: PipelineCompilationOptions {
+                    constants: &vec![],
+                    zero_initialize_workgroup_memory: true,
+                },
+            },
+            fragment: Some(FragmentState {
+                module: &ball_shader,
+                entry_point: Some("fs_main"),
+                targets: &vec![Some(TextureFormat::Bgra8UnormSrgb.into())],
+                compilation_options: PipelineCompilationOptions {
+                    constants: &vec![],
+                    zero_initialize_workgroup_memory: true,
+                },
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                ..Default::default()
+            },
+            multisample: MultisampleState::default(),
+            depth_stencil: None,
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let ball_verticies = 0;
+        let ball_vertex_buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: MAX_BALLS * 6 * size_of::<BallVertex>() as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             near,
             far,
             fovy,
-            verticies: verticies.len() as u32,
+            box_verticies: box_verticies.len() as u32,
+            ball_verticies,
+            ball_vertex_buffer,
             bind_group,
             queue,
             device,
             window,
             surface,
-            vertex_buffer,
+            box_vertex_buffer,
             camera_buffer,
             view_matrix,
             projection_matrix,
             // instance,
             // shader,
-            pipeline,
+            box_pipeline,
+            ball_pipeline,
             surface_configuration,
         }
+    }
+
+    pub fn set_ball_verticies(&mut self, verticies: &[BallVertex]) {
+        self.ball_verticies = verticies.len() as u32;
+        self.queue
+            .write_buffer(&self.ball_vertex_buffer, 0, bytemuck::cast_slice(verticies));
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -238,10 +315,15 @@ impl<'surface> Graphics<'surface> {
                             ..Default::default()
                         });
 
-                    render_pass.set_pipeline(&self.pipeline);
-                    render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+                    render_pass.set_pipeline(&self.box_pipeline);
+                    render_pass.set_vertex_buffer(0, self.box_vertex_buffer.slice(..));
                     render_pass.set_bind_group(0, &self.bind_group, &[]);
-                    render_pass.draw(0..self.verticies, 0..1);
+                    render_pass.draw(0..self.box_verticies, 0..1);
+
+                    render_pass.set_pipeline(&self.ball_pipeline);
+                    render_pass.set_vertex_buffer(0, self.ball_vertex_buffer.slice(..));
+                    render_pass.set_bind_group(0, &self.bind_group, &[]);
+                    render_pass.draw(0..self.ball_verticies, 0..1);
                 }
 
                 let command_buffers = vec![command_encoder.finish()];

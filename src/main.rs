@@ -32,25 +32,36 @@ enum Game<'surface> {
 impl<'s> ApplicationHandler for Game<'s> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let physics = Physics {
-            balls: vec![],
+            balls: vec![Sphere {
+                position: Vector3::zero(),
+                velocity: Vector3::zero(),
+                radius: 0.5,
+            }],
             walls: vec![
                 Border {
-                    position: 0.0,
+                    position: 1.0,
                     normal: Vector3::new(0.0, 1.0, 0.0),
                 },
                 Border {
-                    position: 0.0,
+                    position: 1.0,
                     normal: Vector3::new(1.0, 0.0, 0.0),
                 },
                 Border {
-                    position: 3.0,
+                    position: 1.0,
                     normal: Vector3::new(0.0, -1.0, 0.0),
                 },
                 Border {
-                    position: 3.0,
+                    position: 1.0,
                     normal: Vector3::new(-1.0, 0.0, 0.0),
                 },
-                // TODO: borders on z-axis
+                Border {
+                    position: 1.0,
+                    normal: Vector3::new(0.0, 0.0, 1.0),
+                },
+                Border {
+                    position: 1.0,
+                    normal: Vector3::new(0.0, 0.0, -1.0),
+                },
             ],
             gravity: 9.82,
             energies: vec![],
@@ -86,7 +97,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             [-1.0, 1.0, -1.0],
             [-1.0, 1.0, 1.0],
         ]
-        .map(|[x, y, z]| Vertex {
+        .map(|[x, y, z]| BoxVertex {
             position: [x, y, z, 1.0],
         });
         let graphics = Graphics::new(
@@ -192,6 +203,37 @@ impl<'s> ApplicationHandler for Game<'s> {
                     ..
                 },
             ) => {
+                let verticies: Vec<BallVertex> = physics
+                    .balls
+                    .iter()
+                    .map(
+                        |Sphere {
+                             position: Vector3 { x, y, z },
+                             radius,
+                             ..
+                         }| {
+                            let bottom_left = [x - radius, y - radius, *z, -1.0, -1.0];
+                            let bottom_right = [x + radius, y - radius, *z, 1.0, -1.0];
+                            let top_left = [x - radius, y + radius, *z, -1.0, 1.0];
+                            let top_right = [x + radius, y + radius, *z, 1.0, 1.0];
+
+                            [
+                                bottom_left,
+                                top_left,
+                                top_right,
+                                bottom_left,
+                                top_right,
+                                bottom_right,
+                            ]
+                        },
+                    )
+                    .flatten()
+                    .map(|[x, y, z, uvx, uvy]| BallVertex {
+                        position: [x as f32, y as f32, z as f32, 1.0],
+                        texture_position: [uvx as f32, uvy as f32],
+                    })
+                    .collect();
+                graphics.set_ball_verticies(&verticies);
                 graphics.draw();
             }
             (e, _) => {
