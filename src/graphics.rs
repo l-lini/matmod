@@ -5,12 +5,14 @@ use tokio::runtime::Runtime;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferAddress, BufferBindingType, BufferDescriptor,
-    BufferUsages, Color, CommandEncoderDescriptor, CurrentSurfaceTexture::*, Device,
-    DeviceDescriptor, FragmentState, Instance, InstanceDescriptor, LoadOp, MultisampleState,
-    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PresentMode, PrimitiveState,
-    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureFormat, TextureViewDescriptor,
+    BufferUsages, Color, CommandEncoderDescriptor, CompareFunction, CurrentSurfaceTexture::*,
+    DepthBiasState, DepthStencilState, Device, DeviceDescriptor, Extent3d, FragmentState, Instance,
+    InstanceDescriptor, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PresentMode, PrimitiveState, PrimitiveTopology, Queue,
+    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor,
+    ShaderSource, ShaderStages, StencilState, StoreOp, Surface, SurfaceConfiguration,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
     VertexBufferLayout, VertexState, VertexStepMode, util::BufferInitDescriptor, util::DeviceExt,
     vertex_attr_array,
 };
@@ -188,7 +190,13 @@ impl<'surface> Graphics<'surface> {
                 ..Default::default()
             },
             multisample: MultisampleState::default(),
-            depth_stencil: None,
+            depth_stencil: Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(CompareFunction::LessEqual),
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
             multiview_mask: None,
             cache: None,
         });
@@ -233,7 +241,13 @@ impl<'surface> Graphics<'surface> {
                 ..Default::default()
             },
             multisample: MultisampleState::default(),
-            depth_stencil: None,
+            depth_stencil: Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(CompareFunction::LessEqual),
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
             multiview_mask: None,
             cache: None,
         });
@@ -301,6 +315,23 @@ impl<'surface> Graphics<'surface> {
                         ..Default::default()
                     });
 
+                    let depth_texture = self.device.create_texture(&TextureDescriptor {
+                        size: Extent3d {
+                            width: self.surface_configuration.width,
+                            height: self.surface_configuration.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: TextureDimension::D2,
+                        format: TextureFormat::Depth32Float,
+                        view_formats: &[],
+                        usage: TextureUsages::RENDER_ATTACHMENT,
+                        label: None,
+                    });
+
+                    let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
+
                     let mut render_pass =
                         command_encoder.begin_render_pass(&RenderPassDescriptor {
                             color_attachments: &vec![Some(RenderPassColorAttachment {
@@ -312,6 +343,14 @@ impl<'surface> Graphics<'surface> {
                                     store: StoreOp::Store,
                                 },
                             })],
+                            depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                                view: &depth_view,
+                                depth_ops: Some(Operations {
+                                    load: LoadOp::Clear(1.0),
+                                    store: StoreOp::Discard,
+                                }),
+                                stencil_ops: None,
+                            }),
                             ..Default::default()
                         });
 
