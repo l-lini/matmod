@@ -1,4 +1,4 @@
-use cgmath::{Matrix4, Rad, Vector2, Vector3, perspective, prelude::*};
+use cgmath::{Matrix4, Point3, Rad, Vector2, Vector3, perspective, prelude::*};
 use spheres::graphics::*;
 use spheres::physics::*;
 use std::{f32::consts::PI, time::Instant};
@@ -24,6 +24,7 @@ enum Game<'surface> {
         physics: Physics,
         graphics: Graphics<'surface>,
         sphere_step: SphereStep,
+        camera_position: Point3<f32>,
         instant: Instant,
         mouse_position: Vector2<f64>,
     },
@@ -100,6 +101,27 @@ impl<'s> ApplicationHandler for Game<'s> {
         .map(|[x, y, z]| BoxVertex {
             position: [x, y, z, 1.0],
         });
+        let ball_verticies: Vec<_> = {
+            let bottom_left = [-1.0, -1.0, 0.0, -1.0, -1.0];
+            let bottom_right = [1.0, -1.0, 0.0, 1.0, -1.0];
+            let top_left = [-1.0, 1.0, 0.0, -1.0, 1.0];
+            let top_right = [1.0, 1.0, 0.0, 1.0, 1.0];
+
+            [
+                bottom_left,
+                top_left,
+                top_right,
+                bottom_left,
+                top_right,
+                bottom_right,
+            ]
+        }
+        .iter()
+        .map(|[x, y, z, uvx, uvy]| BallVertex {
+            position: [*x, *y, *z, 1.0],
+            texture_position: [*uvx, *uvy],
+        })
+        .collect();
         let graphics = Graphics::new(
             event_loop,
             view_matrix,
@@ -107,6 +129,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             0.1,
             100.0,
             &box_verticies,
+            &ball_verticies,
         );
 
         *self = Self::Initialized {
@@ -115,6 +138,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             pause: false,
             sphere_step: SphereStep::None,
             instant: Instant::now(),
+            camera_position,
             mouse_position: Vector2::zero(),
         }
     }
@@ -199,41 +223,24 @@ impl<'s> ApplicationHandler for Game<'s> {
                     mouse_position,
                     physics,
                     instant,
+                    camera_position,
                     pause,
                     ..
                 },
             ) => {
-                let verticies: Vec<BallVertex> = physics
+                let instances: Vec<[[f32; 4]; 4]> = physics
                     .balls
                     .iter()
-                    .map(
-                        |Sphere {
-                             position: Vector3 { x, y, z },
-                             radius,
-                             ..
-                         }| {
-                            let bottom_left = [x - radius, y - radius, *z, -1.0, -1.0];
-                            let bottom_right = [x + radius, y - radius, *z, 1.0, -1.0];
-                            let top_left = [x - radius, y + radius, *z, -1.0, 1.0];
-                            let top_right = [x + radius, y + radius, *z, 1.0, 1.0];
-
-                            [
-                                bottom_left,
-                                top_left,
-                                top_right,
-                                bottom_left,
-                                top_right,
-                                bottom_right,
-                            ]
-                        },
-                    )
-                    .flatten()
-                    .map(|[x, y, z, uvx, uvy]| BallVertex {
-                        position: [x as f32, y as f32, z as f32, 1.0],
-                        texture_position: [uvx as f32, uvy as f32],
+                    .map(|ball| {
+                        let position = Vector3::new(
+                            ball.position.x as f32,
+                            ball.position.y as f32,
+                            ball.position.z as f32,
+                        );
+                        Matrix4::from_translation(position).into()
                     })
                     .collect();
-                graphics.set_ball_verticies(&verticies);
+                graphics.set_instances(&instances);
                 graphics.draw();
             }
             (e, _) => {

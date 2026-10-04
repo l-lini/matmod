@@ -3,12 +3,27 @@
 struct Vertex {
     @location(0) position: vec4f,
     @location(1) texture_position: vec2f,
+}
+
+struct Instance {
+    @location(2) matrix_1: vec4f,
+    @location(3) matrix_2: vec4f,
+    @location(4) matrix_3: vec4f,
+    @location(5) matrix_4: vec4f,
 };
 
 @vertex
-fn vs_main(vertex: Vertex) -> VertexOutput {
+fn vs_main(vertex: Vertex, instance: Instance) -> VertexOutput {
     var vertex_output: VertexOutput;
-    vertex_output.position = camera_matrix * vertex.position;
+
+    let matrix = mat4x4<f32>(
+        instance.matrix_1,
+        instance.matrix_2,
+        instance.matrix_3,
+        instance.matrix_4,
+    );
+
+    vertex_output.position = camera_matrix * matrix * vertex.position;
     vertex_output.texture_position = vertex.texture_position;
 
     return vertex_output;

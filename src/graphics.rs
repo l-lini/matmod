@@ -1,5 +1,5 @@
 use bytemuck::NoUninit;
-use cgmath::{Matrix4, Point3, Rad, Vector3, perspective, prelude::*};
+use cgmath::{Matrix4, Point3, Quaternion, Rad, Vector3, perspective, prelude::*};
 use std::{borrow::Cow, sync::Arc};
 use tokio::runtime::Runtime;
 use wgpu::{
@@ -13,8 +13,8 @@ use wgpu::{
     RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor,
     ShaderSource, ShaderStages, StencilState, StoreOp, Surface, SurfaceConfiguration,
     TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
-    VertexBufferLayout, VertexState, VertexStepMode, util::BufferInitDescriptor, util::DeviceExt,
-    vertex_attr_array,
+    VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
+    util::BufferInitDescriptor, util::DeviceExt, vertex_attr_array,
 };
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
@@ -41,6 +41,7 @@ pub struct Graphics<'surface> {
     queue: Queue,
     device: Device,
     window: Arc<Window>,
+    instances: u32,
     box_vertex_buffer: Buffer,
     ball_vertex_buffer: Buffer,
     camera_buffer: Buffer,
@@ -49,6 +50,7 @@ pub struct Graphics<'surface> {
     projection_matrix: Matrix4<f32>,
     box_verticies: u32,
     ball_verticies: u32,
+    instance_buffer: Buffer,
     surface: Surface<'surface>,
     near: f32,
     far: f32,
@@ -66,6 +68,7 @@ impl<'surface> Graphics<'surface> {
         near: f32,
         far: f32,
         box_verticies: &[BoxVertex],
+        ball_verticies: &[BallVertex],
     ) -> Self {
         let window = Arc::new(
             event_loop
@@ -213,14 +216,42 @@ impl<'surface> Graphics<'surface> {
             vertex: VertexState {
                 module: &ball_shader,
                 entry_point: Some("vs_main"),
-                buffers: &vec![Some(VertexBufferLayout {
-                    array_stride: size_of::<BallVertex>() as BufferAddress,
-                    step_mode: VertexStepMode::Vertex,
-                    attributes: &vertex_attr_array![
-                        0 => Float32x4,
-                        1 => Float32x2,
-                    ],
-                })],
+                buffers: &vec![
+                    Some(VertexBufferLayout {
+                        array_stride: size_of::<BallVertex>() as BufferAddress,
+                        step_mode: VertexStepMode::Vertex,
+                        attributes: &vertex_attr_array![
+                            0 => Float32x4,
+                            1 => Float32x2,
+                        ],
+                    }),
+                    Some(VertexBufferLayout {
+                        array_stride: size_of::<[[f32; 4]; 4]>() as BufferAddress,
+                        step_mode: VertexStepMode::Instance,
+                        attributes: &[
+                            VertexAttribute {
+                                offset: 0,
+                                shader_location: 2,
+                                format: VertexFormat::Float32x4,
+                            },
+                            VertexAttribute {
+                                offset: 16,
+                                shader_location: 3,
+                                format: VertexFormat::Float32x4,
+                            },
+                            VertexAttribute {
+                                offset: 32,
+                                shader_location: 4,
+                                format: VertexFormat::Float32x4,
+                            },
+                            VertexAttribute {
+                                offset: 48,
+                                shader_location: 5,
+                                format: VertexFormat::Float32x4,
+                            },
+                        ],
+                    }),
+                ],
                 compilation_options: PipelineCompilationOptions {
                     constants: &vec![],
                     zero_initialize_workgroup_memory: true,
@@ -252,21 +283,28 @@ impl<'surface> Graphics<'surface> {
             cache: None,
         });
 
-        let ball_verticies = 0;
-        let ball_vertex_buffer = device.create_buffer(&BufferDescriptor {
+        let ball_vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
-            size: MAX_BALLS * 6 * size_of::<BallVertex>() as u64,
+            contents: bytemuck::cast_slice(ball_verticies),
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+        });
+
+        let instance_buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: MAX_BALLS * size_of::<Matrix4<f32>>() as u64,
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         Self {
+            instances: 0,
             near,
             far,
             fovy,
             box_verticies: box_verticies.len() as u32,
-            ball_verticies,
+            ball_verticies: ball_verticies.len() as u32,
             ball_vertex_buffer,
+            instance_buffer,
             bind_group,
             queue,
             device,
@@ -284,10 +322,10 @@ impl<'surface> Graphics<'surface> {
         }
     }
 
-    pub fn set_ball_verticies(&mut self, verticies: &[BallVertex]) {
-        self.ball_verticies = verticies.len() as u32;
+    pub fn set_instances(&mut self, instances: &[[[f32; 4]; 4]]) {
         self.queue
-            .write_buffer(&self.ball_vertex_buffer, 0, bytemuck::cast_slice(verticies));
+            .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
+        self.instances = instances.len() as u32;
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -361,8 +399,9 @@ impl<'surface> Graphics<'surface> {
 
                     render_pass.set_pipeline(&self.ball_pipeline);
                     render_pass.set_vertex_buffer(0, self.ball_vertex_buffer.slice(..));
+                    render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
                     render_pass.set_bind_group(0, &self.bind_group, &[]);
-                    render_pass.draw(0..self.ball_verticies, 0..1);
+                    render_pass.draw(0..self.ball_verticies, 0..self.instances);
                 }
 
                 let command_buffers = vec![command_encoder.finish()];
