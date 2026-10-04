@@ -4,7 +4,7 @@ use spheres::physics::*;
 use std::{f32::consts::PI, time::Instant};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{ElementState, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, NamedKey},
     window::WindowId,
@@ -24,8 +24,9 @@ enum Game<'surface> {
         physics: Physics,
         graphics: Graphics<'surface>,
         sphere_step: SphereStep,
-        camera_position: Point3<f32>,
+        camera: Vector2<Rad<f32>>,
         instant: Instant,
+        right: bool,
         mouse_position: Vector2<f64>,
     },
 }
@@ -68,10 +69,10 @@ impl<'s> ApplicationHandler for Game<'s> {
             energies: vec![],
         };
 
-        let camera_position = (3.0, 1.5, 3.0).into();
-        let look_direction = (0.0, 0.0, 0.0).into();
-        let up_direction = cgmath::Vector3::unit_y();
-        let view_matrix = Matrix4::look_at_rh(camera_position, look_direction, up_direction);
+        let camera = Vector2::new(Rad(0.0), Rad(PI / 4.0));
+        let view_matrix = Matrix4::from_translation(Vector3::new(0.0, 0.0, -4.0))
+            * Matrix4::from_angle_x(camera.x)
+            * Matrix4::from_angle_y(camera.y);
         let box_verticies = [
             [-1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0],
@@ -138,7 +139,8 @@ impl<'s> ApplicationHandler for Game<'s> {
             pause: false,
             sphere_step: SphereStep::None,
             instant: Instant::now(),
-            camera_position,
+            right: false,
+            camera,
             mouse_position: Vector2::zero(),
         }
     }
@@ -151,8 +153,22 @@ impl<'s> ApplicationHandler for Game<'s> {
             }
             (
                 WindowEvent::CursorMoved { position, .. },
-                Game::Initialized { mouse_position, .. },
+                Game::Initialized {
+                    mouse_position,
+                    right,
+                    camera,
+                    graphics,
+                    ..
+                },
             ) => {
+                if *right {
+                    camera.x -= Rad((mouse_position.y as f32 - position.y as f32) * 0.01);
+                    camera.y -= Rad((mouse_position.x as f32 - position.x as f32) * 0.01);
+                }
+                let view_matrix = Matrix4::from_translation(Vector3::new(0.0, 0.0, -4.0))
+                    * Matrix4::from_angle_x(camera.x)
+                    * Matrix4::from_angle_y(camera.y);
+                graphics.set_view_matrix(&view_matrix);
                 mouse_position.x = position.x;
                 mouse_position.y = position.y;
             }
@@ -173,47 +189,22 @@ impl<'s> ApplicationHandler for Game<'s> {
             (
                 WindowEvent::MouseInput {
                     state: ElementState::Pressed,
+                    button: MouseButton::Right,
                     ..
                 },
-                Game::Initialized {
-                    mouse_position,
-                    physics,
-                    sphere_step,
-                    ..
-                },
+                Game::Initialized { right, .. },
             ) => {
-                let mouse_world_position =
-                    Vector3::new(mouse_position.x, mouse_position.y, 0.0) * METERS_PER_PIXEL;
-
-                match sphere_step {
-                    SphereStep::None => {
-                        let new_spheres: Vec<_> = physics
-                            .balls
-                            .iter()
-                            .filter(|sphere| {
-                                (sphere.position - mouse_world_position).magnitude() > sphere.radius
-                            })
-                            .map(|&sphere| sphere.clone())
-                            .collect();
-                        if new_spheres.len() < physics.balls.len() {
-                            physics.balls = new_spheres;
-                        } else {
-                            physics.balls.push(Sphere {
-                                position: mouse_world_position,
-                                velocity: Vector3::zero(),
-                                radius: 0.0,
-                            });
-                            *sphere_step = SphereStep::Size;
-                        }
-                    }
-                    SphereStep::Size => {
-                        let r = (physics.balls.last().unwrap().position - mouse_world_position)
-                            .magnitude();
-                        physics.balls.last_mut().unwrap().radius = r;
-                        *sphere_step = SphereStep::None;
-                        dbg!(physics.balls.last().unwrap());
-                    }
-                }
+                *right = true;
+            }
+            (
+                WindowEvent::MouseInput {
+                    state: ElementState::Released,
+                    button: MouseButton::Right,
+                    ..
+                },
+                Game::Initialized { right, .. },
+            ) => {
+                *right = false;
             }
             (
                 WindowEvent::RedrawRequested,
@@ -223,7 +214,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                     mouse_position,
                     physics,
                     instant,
-                    camera_position,
+                    camera,
                     pause,
                     ..
                 },
@@ -237,7 +228,14 @@ impl<'s> ApplicationHandler for Game<'s> {
                             ball.position.y as f32,
                             ball.position.z as f32,
                         );
-                        Matrix4::from_translation(position).into()
+                        let translation = Matrix4::from_translation(position);
+                        let scale = Matrix4::from_scale(ball.radius as f32);
+                        let rotation =
+                            Matrix4::from_angle_y(-camera.y) * Matrix4::from_angle_x(-camera.x);
+
+                        let matrix = translation * rotation * scale;
+
+                        matrix.into()
                     })
                     .collect();
                 graphics.set_instances(&instances);

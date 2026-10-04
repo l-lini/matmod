@@ -134,7 +134,7 @@ impl<'surface> Graphics<'surface> {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             entries: &[BindGroupLayoutEntry {
                 binding: 0,
-                visibility: ShaderStages::VERTEX,
+                visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -320,6 +320,16 @@ impl<'surface> Graphics<'surface> {
             ball_pipeline,
             surface_configuration,
         }
+    }
+
+    pub fn set_view_matrix(&mut self, view_matrix: &Matrix4<f32>) {
+        self.view_matrix = *view_matrix;
+        let vp_mat = OPENGL_TO_WGPU_MATRIX * self.projection_matrix * view_matrix;
+        let vp_ref: &[f32; 16] = vp_mat.as_ref();
+
+        let vp_ref: &[f32; 16] = vp_mat.as_ref();
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(vp_ref));
     }
 
     pub fn set_instances(&mut self, instances: &[[[f32; 4]; 4]]) {
