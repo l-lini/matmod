@@ -1,7 +1,7 @@
-use cgmath::{Vector2, Vector3, prelude::*};
+use cgmath::{Matrix4, Rad, Vector2, Vector3, perspective, prelude::*};
 use spheres::graphics::*;
 use spheres::physics::*;
-use std::time::Instant;
+use std::{f32::consts::PI, time::Instant};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, WindowEvent},
@@ -56,7 +56,24 @@ impl<'s> ApplicationHandler for Game<'s> {
             energies: vec![],
         };
 
-        let graphics = Graphics::new(event_loop);
+        let camera_position = (3.0, 1.5, 3.0).into();
+        let look_direction = (0.0, 0.0, 0.0).into();
+        let up_direction = cgmath::Vector3::unit_y();
+        let view_matrix = Matrix4::look_at_rh(camera_position, look_direction, up_direction);
+        let projection_matrix = perspective(Rad(2.0 * PI / 5.0), 1.0, 0.1, 100.0);
+        let mut verticies = [Vertex {
+            position: [0.0, 0.0, 0.0, 1.0],
+        }; 300];
+        for i in 0..300 {
+            let t = 0.1 * (i as f32) / 30.0;
+            let x = (-t).exp() * (30.0 * t).sin();
+            let z = (-t).exp() * (30.0 * t).cos();
+            let y = 2.0 * t * -1.0;
+            verticies[i] = Vertex {
+                position: [x, y, z, 1.0],
+            };
+        }
+        let graphics = Graphics::new(event_loop, view_matrix, projection_matrix, &verticies);
 
         *self = Self::Initialized {
             graphics,
@@ -152,87 +169,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                     ..
                 },
             ) => {
-                let mouse_world_position =
-                    Vector3::new(mouse_position.x, mouse_position.y, 0.0) * METERS_PER_PIXEL;
-
-                let delta_time = instant.elapsed();
-                *instant = Instant::now();
-
-                match (*pause, &sphere_step) {
-                    (false, SphereStep::None) => _ = physics.tick(delta_time),
-                    _ => (),
-                }
-                let mut spheres = physics.balls.clone();
-                match &sphere_step {
-                    SphereStep::None => spheres.push(Sphere {
-                        position: mouse_world_position,
-                        radius: 0.0,
-                        velocity: Vector3::zero(),
-                    }),
-                    SphereStep::Size => {
-                        let sphere = spheres.last_mut().unwrap();
-                        sphere.radius = sphere.position.distance(mouse_world_position);
-                    }
-                }
-                graphics.verticies = spheres
-                    .iter()
-                    .map(
-                        |Sphere {
-                             position: Vector3 { x, y, .. },
-                             radius,
-                             ..
-                         }| {
-                            let x_min = x - radius;
-                            let x_max = x + radius;
-                            let y_min = y - radius;
-                            let y_max = y + radius;
-
-                            let x_min = x_min / METERS_PER_PIXEL;
-                            let x_max = x_max / METERS_PER_PIXEL;
-                            let y_min = y_min / METERS_PER_PIXEL;
-                            let y_max = y_max / METERS_PER_PIXEL;
-
-                            let screen_width = 500.0;
-                            let screen_height = 1080.0;
-
-                            let x_min = (x_min as f32 / screen_width - 0.5) * 2.0;
-                            let x_max = (x_max as f32 / screen_width - 0.5) * 2.0;
-                            let y_min = (y_min as f32 / screen_height - 0.5) * 2.0;
-                            let y_max = (y_max as f32 / screen_height - 0.5) * 2.0;
-
-                            (x_min, x_max, y_min, y_max)
-                        },
-                    )
-                    .map(|(x_min, x_max, y_min, y_max)| {
-                        [
-                            Vertex {
-                                position: [x_min, y_min, 0.0],
-                                texture_position: [-1.0, -1.0],
-                            },
-                            Vertex {
-                                position: [x_min, y_max, 0.0],
-                                texture_position: [-1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [x_max, y_max, 0.0],
-                                texture_position: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [x_max, y_max, 0.0],
-                                texture_position: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [x_max, y_min, 0.0],
-                                texture_position: [1.0, -1.0],
-                            },
-                            Vertex {
-                                position: [x_min, y_min, 0.0],
-                                texture_position: [-1.0, -1.0],
-                            },
-                        ]
-                    })
-                    .flatten()
-                    .collect();
                 graphics.draw();
             }
             _ => (),
