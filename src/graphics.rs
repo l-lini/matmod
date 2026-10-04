@@ -1,5 +1,5 @@
 use bytemuck::NoUninit;
-use cgmath::{Matrix4, Point3, Vector3, prelude::*};
+use cgmath::{Matrix4, Point3, Rad, Vector3, perspective, prelude::*};
 use std::{borrow::Cow, sync::Arc};
 use tokio::runtime::Runtime;
 use wgpu::{
@@ -18,6 +18,10 @@ use winit::{event_loop::ActiveEventLoop, window::Window};
 
 const MAX_BALLS: usize = 10_000;
 
+const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
+    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
+);
+
 #[repr(C, packed)]
 #[derive(NoUninit, Copy, Clone, Debug)]
 pub struct Vertex {
@@ -35,6 +39,9 @@ pub struct Graphics<'surface> {
     projection_matrix: Matrix4<f32>,
     verticies: u32,
     surface: Surface<'surface>,
+    near: f32,
+    far: f32,
+    fovy: Rad<f32>,
     pipeline: RenderPipeline,
     surface_configuration: SurfaceConfiguration,
 }
@@ -43,7 +50,9 @@ impl<'surface> Graphics<'surface> {
     pub fn new(
         event_loop: &ActiveEventLoop,
         view_matrix: Matrix4<f32>,
-        projection_matrix: Matrix4<f32>,
+        fovy: Rad<f32>,
+        near: f32,
+        far: f32,
         verticies: &[Vertex],
     ) -> Self {
         let window = Arc::new(
@@ -92,10 +101,7 @@ impl<'surface> Graphics<'surface> {
             contents: bytemuck::cast_slice(verticies),
         });
 
-        const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 1.0,
-        );
-
+        let projection_matrix = perspective(fovy, width as f32 / height as f32, near, far);
         let vp_mat = OPENGL_TO_WGPU_MATRIX * projection_matrix * view_matrix;
         let vp_ref: &[f32; 16] = vp_mat.as_ref();
 
@@ -173,6 +179,9 @@ impl<'surface> Graphics<'surface> {
         });
 
         Self {
+            near,
+            far,
+            fovy,
             verticies: verticies.len() as u32,
             bind_group,
             queue,
@@ -195,6 +204,12 @@ impl<'surface> Graphics<'surface> {
         self.surface_configuration.height = height;
         self.surface
             .configure(&self.device, &self.surface_configuration);
+        self.projection_matrix =
+            perspective(self.fovy, width as f32 / height as f32, self.near, self.far);
+        let vp_mat = OPENGL_TO_WGPU_MATRIX * self.projection_matrix * self.view_matrix;
+        let vp_ref: &[f32; 16] = vp_mat.as_ref();
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(vp_ref));
     }
 
     pub fn draw(&self) {

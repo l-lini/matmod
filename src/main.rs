@@ -60,20 +60,43 @@ impl<'s> ApplicationHandler for Game<'s> {
         let look_direction = (0.0, 0.0, 0.0).into();
         let up_direction = cgmath::Vector3::unit_y();
         let view_matrix = Matrix4::look_at_rh(camera_position, look_direction, up_direction);
-        let projection_matrix = perspective(Rad(2.0 * PI / 5.0), 1.0, 0.1, 100.0);
-        let mut verticies = [Vertex {
-            position: [0.0, 0.0, 0.0, 1.0],
-        }; 300];
-        for i in 0..300 {
-            let t = 0.1 * (i as f32) / 30.0;
-            let x = (-t).exp() * (30.0 * t).sin();
-            let z = (-t).exp() * (30.0 * t).cos();
-            let y = 2.0 * t * -1.0;
-            verticies[i] = Vertex {
-                position: [x, y, z, 1.0],
-            };
-        }
-        let graphics = Graphics::new(event_loop, view_matrix, projection_matrix, &verticies);
+        let box_verticies = [
+            [-1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, 1.0, -1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, 1.0, 1.0],
+        ]
+        .map(|[x, y, z]| Vertex {
+            position: [x, y, z, 1.0],
+        });
+        let graphics = Graphics::new(
+            event_loop,
+            view_matrix,
+            Rad(2.0 * PI / 5.0),
+            0.1,
+            100.0,
+            &box_verticies,
+        );
 
         *self = Self::Initialized {
             graphics,
@@ -171,7 +194,9 @@ impl<'s> ApplicationHandler for Game<'s> {
             ) => {
                 graphics.draw();
             }
-            _ => (),
+            (e, _) => {
+                dbg!(e);
+            }
         }
     }
 }
