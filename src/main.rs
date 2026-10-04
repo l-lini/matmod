@@ -34,11 +34,18 @@ enum Game<'surface> {
 impl<'s> ApplicationHandler for Game<'s> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let physics = Physics {
-            balls: vec![Sphere {
-                position: Vector3::zero(),
-                velocity: Vector3::zero(),
-                radius: 0.5,
-            }],
+            balls: vec![
+                Sphere {
+                    position: Vector3::zero(),
+                    velocity: Vector3::zero(),
+                    radius: 0.5,
+                },
+                Sphere {
+                    position: Vector3::new(0.5, 0.5, 0.5),
+                    velocity: Vector3::zero(),
+                    radius: 0.25,
+                },
+            ],
             walls: vec![
                 Border {
                     position: 1.0,
@@ -219,6 +226,8 @@ impl<'s> ApplicationHandler for Game<'s> {
                     ..
                 },
             ) => {
+                physics.tick(instant.elapsed());
+                *instant = Instant::now();
                 let instances: Vec<[[f32; 4]; 4]> = physics
                     .balls
                     .iter()
