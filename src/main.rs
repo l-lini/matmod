@@ -1,7 +1,7 @@
 use cgmath::{Matrix4, Point3, Rad, Vector2, Vector3, perspective, prelude::*};
 use spheres::graphics::*;
 use spheres::physics::*;
-use std::{f32::consts::PI, time::Instant};
+use std::{f32::consts::PI, time::Duration, time::Instant};
 use winit::{
     application::ApplicationHandler,
     event::{ElementState, KeyEvent, MouseButton, WindowEvent},
@@ -10,20 +10,12 @@ use winit::{
     window::WindowId,
 };
 
-const METERS_PER_PIXEL: f64 = 0.01;
-
-enum SphereStep {
-    None,
-    Size,
-}
-
 enum Game<'surface> {
     Uninitialized,
     Initialized {
         pause: bool,
         physics: Physics,
         graphics: Graphics<'surface>,
-        sphere_step: SphereStep,
         camera: Vector2<Rad<f32>>,
         instant: Instant,
         right: bool,
@@ -41,9 +33,9 @@ impl<'s> ApplicationHandler for Game<'s> {
                     radius: 0.5,
                 },
                 Sphere {
-                    position: Vector3::new(0.5, 0.5, 0.5),
-                    velocity: Vector3::zero(),
-                    radius: 0.25,
+                    position: Vector3::new(0.5, 0.5, 0.75),
+                    velocity: Vector3::new(0.1, 0.0, 0.0),
+                    radius: 0.4,
                 },
             ],
             walls: vec![
@@ -144,7 +136,6 @@ impl<'s> ApplicationHandler for Game<'s> {
             graphics,
             physics,
             pause: false,
-            sphere_step: SphereStep::None,
             instant: Instant::now(),
             right: false,
             camera,
@@ -217,7 +208,6 @@ impl<'s> ApplicationHandler for Game<'s> {
                 WindowEvent::RedrawRequested,
                 Game::Initialized {
                     graphics,
-                    sphere_step,
                     mouse_position,
                     physics,
                     instant,
@@ -226,7 +216,9 @@ impl<'s> ApplicationHandler for Game<'s> {
                     ..
                 },
             ) => {
-                physics.tick(instant.elapsed());
+                physics.tick(Duration::from_secs_f32(
+                    instant.elapsed().as_secs_f32() / 2.0,
+                ));
                 *instant = Instant::now();
                 let instances: Vec<[[f32; 4]; 4]> = physics
                     .balls

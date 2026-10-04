@@ -38,8 +38,9 @@ impl Physics {
         }
 
         for sphere in self.balls.iter_mut() {
+            sphere.velocity.y -= 9.82 * delta_seconds / 2.0;
             sphere.position += sphere.velocity * delta_seconds;
-            sphere.velocity.y -= 9.82 * delta_seconds;
+            sphere.velocity.y -= 9.82 * delta_seconds / 2.0;
 
             energy += sphere.mass() * sphere.velocity.magnitude2() / 2.0;
         }
