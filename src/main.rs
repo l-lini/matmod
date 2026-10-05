@@ -15,6 +15,7 @@ enum Game<'surface> {
     Initialized {
         pause: bool,
         physics: Physics,
+        colors: Vec<[f32; 4]>,
         graphics: Graphics<'surface>,
         camera: Vector2<Rad<f32>>,
         instant: Instant,
@@ -133,6 +134,7 @@ impl<'s> ApplicationHandler for Game<'s> {
         );
 
         *self = Self::Initialized {
+            colors: vec![[0.5, 0.5, 0.5, 0.5], [0.75, 0.8, 0.1, 1.0]],
             graphics,
             physics,
             pause: false,
@@ -213,17 +215,18 @@ impl<'s> ApplicationHandler for Game<'s> {
                     instant,
                     camera,
                     pause,
+                    colors,
                     ..
                 },
             ) => {
-                physics.tick(Duration::from_secs_f32(
-                    instant.elapsed().as_secs_f32() / 2.0,
-                ));
+                let delta_time = instant.elapsed();
+                physics.tick(delta_time.div_f64(10.0));
                 *instant = Instant::now();
-                let instances: Vec<[[f32; 4]; 4]> = physics
+                let instances: Vec<[[f32; 4]; 5]> = physics
                     .balls
                     .iter()
-                    .map(|ball| {
+                    .zip(colors)
+                    .map(|(ball, color)| {
                         let position = Vector3::new(
                             ball.position.x as f32,
                             ball.position.y as f32,
@@ -236,7 +239,17 @@ impl<'s> ApplicationHandler for Game<'s> {
 
                         let matrix = translation * rotation * scale;
 
-                        matrix.into()
+                        let matrix_ref: [[f32; 4]; 4] = matrix.into();
+
+                        let mut out: [[f32; 4]; 5] = [[0.0; 4]; 5];
+
+                        out[0] = matrix_ref[0];
+                        out[1] = matrix_ref[1];
+                        out[2] = matrix_ref[2];
+                        out[3] = matrix_ref[3];
+                        out[4] = *color;
+
+                        out
                     })
                     .collect();
                 graphics.set_instances(&instances);

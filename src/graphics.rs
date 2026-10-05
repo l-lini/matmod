@@ -5,16 +5,16 @@ use tokio::runtime::Runtime;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferAddress, BufferBindingType, BufferDescriptor,
-    BufferUsages, Color, CommandEncoderDescriptor, CompareFunction, CurrentSurfaceTexture::*,
-    DepthBiasState, DepthStencilState, Device, DeviceDescriptor, Extent3d, FragmentState, Instance,
-    InstanceDescriptor, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PresentMode, PrimitiveState, PrimitiveTopology, Queue,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor,
-    ShaderSource, ShaderStages, StencilState, StoreOp, Surface, SurfaceConfiguration,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
-    VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
-    util::BufferInitDescriptor, util::DeviceExt, vertex_attr_array,
+    BufferUsages, Color, CommandEncoderDescriptor, CompareFunction, CompositeAlphaMode,
+    CurrentSurfaceTexture::*, DepthBiasState, DepthStencilState, Device, DeviceDescriptor,
+    Extent3d, FragmentState, Instance, InstanceDescriptor, LoadOp, MultisampleState, Operations,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PresentMode, PrimitiveState,
+    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp, Surface,
+    SurfaceConfiguration, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
+    VertexStepMode, util::BufferInitDescriptor, util::DeviceExt, vertex_attr_array,
 };
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
@@ -102,6 +102,7 @@ impl<'surface> Graphics<'surface> {
         let mut surface_configuration =
             surface.get_default_config(&adapter, width, height).unwrap();
         surface_configuration.present_mode = PresentMode::Fifo;
+        surface_configuration.alpha_mode = CompositeAlphaMode::PreMultiplied;
 
         surface.configure(&device, &surface_configuration);
 
@@ -226,7 +227,7 @@ impl<'surface> Graphics<'surface> {
                         ],
                     }),
                     Some(VertexBufferLayout {
-                        array_stride: size_of::<[[f32; 4]; 4]>() as BufferAddress,
+                        array_stride: size_of::<[[f32; 4]; 5]>() as BufferAddress,
                         step_mode: VertexStepMode::Instance,
                         attributes: &[
                             VertexAttribute {
@@ -247,6 +248,11 @@ impl<'surface> Graphics<'surface> {
                             VertexAttribute {
                                 offset: 48,
                                 shader_location: 5,
+                                format: VertexFormat::Float32x4,
+                            },
+                            VertexAttribute {
+                                offset: 64,
+                                shader_location: 6,
                                 format: VertexFormat::Float32x4,
                             },
                         ],
@@ -291,7 +297,7 @@ impl<'surface> Graphics<'surface> {
 
         let instance_buffer = device.create_buffer(&BufferDescriptor {
             label: None,
-            size: MAX_BALLS * size_of::<Matrix4<f32>>() as u64,
+            size: MAX_BALLS * size_of::<[[f32; 4]; 5]>() as u64,
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -332,7 +338,7 @@ impl<'surface> Graphics<'surface> {
             .write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(vp_ref));
     }
 
-    pub fn set_instances(&mut self, instances: &[[[f32; 4]; 4]]) {
+    pub fn set_instances(&mut self, instances: &[[[f32; 4]; 5]]) {
         self.queue
             .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
         self.instances = instances.len() as u32;

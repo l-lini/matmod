@@ -57,6 +57,9 @@ def length_squared(x, y) -> float:
 def distance_squared(x1, y1, x2, y2) -> float:
     return length_squared(x2 - x1, y2 - y1)
 
+def colliding_with_ball(x1,y1,r1,x2,y2,r2) -> bool:
+    return distance_squared(x1,y1,x2,y2) <= (r1 + r2) ** 2
+
 def one_dimensional_collision(v1, v2, m1, m2) -> (float, float):
     R = v2 - v1
     I = v1 * m1 + v2 * m2
@@ -81,10 +84,14 @@ def two_dimensional_collision(b1, b2):
     new_v2y = cvy * new_v2
 
     # Invert paralell velocity
-    b1.vx += new_v1x * 2
-    b1.vy += new_v1y * 2
-    b2.vx += new_v2x * 2
-    b2.vy += new_v2y * 2
+    b1.vx -= v1 * cvx
+    b1.vy -= v1 * cvy
+    b1.vx += new_v1x
+    b1.vy += new_v1y
+    b2.vx -= v2 * cvx
+    b2.vy -= v2 * cvy
+    b2.vx += new_v2x
+    b2.vy += new_v2y
 
 def time_until_wall(p, v, r) -> float:
     t = (r - p) / v

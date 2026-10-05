@@ -10,6 +10,7 @@ struct Instance {
     @location(3) matrix_2: vec4f,
     @location(4) matrix_3: vec4f,
     @location(5) matrix_4: vec4f,
+    @location(6) color: vec4f,
 };
 
 @vertex
@@ -25,6 +26,7 @@ fn vs_main(vertex: Vertex, instance: Instance) -> VertexOutput {
 
     vertex_output.position = camera_matrix * matrix * vertex.position;
     vertex_output.texture_position = vertex.texture_position;
+    vertex_output.color = instance.color;
 
     return vertex_output;
 }
@@ -32,6 +34,7 @@ fn vs_main(vertex: Vertex, instance: Instance) -> VertexOutput {
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) texture_position: vec2f,
+    @location(1) color: vec4f,
 };
 
 fn inverse(m: mat4x4f) -> mat4x4f {
@@ -87,9 +90,9 @@ fn fs_main(vertex: VertexOutput) -> @location(0) vec4<f32> {
     }
     var z: f32 = sqrt(1.0 - clamp(r * r, 0.0, 1.0));
     var n = 0.5 + 0.5 * vec3f(vertex.texture_position, z);
-    var light4 = inverse(camera_matrix) * vec4f(- 200.0, 200.0, 200.0, 1.0);
+    var light4 = camera_matrix * vec4f(- 200.0, 200.0, 200.0, 1.0);
     var light3 = normalize(vec3f(light4.x, light4.y, light4.z));
     var brightness: f32 = clamp(dot(light3, n), 0.1, 1.0);
-    var color = vec3(0.1, 0.843, 1.0);
-    return vec4f(color * brightness * a, a);
+    var color = vertex.color;
+    return color * brightness * a;
 }
