@@ -31,37 +31,37 @@ impl<'s> ApplicationHandler for Game<'s> {
                 Sphere {
                     position: Vector3::zero(),
                     velocity: Vector3::zero(),
-                    radius: 0.5,
+                    radius: 0.3,
                 },
                 Sphere {
-                    position: Vector3::new(0.5, 0.5, 0.75),
-                    velocity: Vector3::new(0.1, 0.0, 0.0),
-                    radius: 0.4,
+                    position: Vector3::new(1.0, 0.0, 0.0),
+                    velocity: Vector3::new(-0.5, 0.0, 0.0),
+                    radius: 0.2,
                 },
             ],
             walls: vec![
                 Border {
-                    position: 1.0,
+                    position: 1.5,
                     normal: Vector3::new(0.0, 1.0, 0.0),
                 },
                 Border {
-                    position: 1.0,
+                    position: 1.5,
                     normal: Vector3::new(1.0, 0.0, 0.0),
                 },
                 Border {
-                    position: 1.0,
+                    position: 1.5,
                     normal: Vector3::new(0.0, -1.0, 0.0),
                 },
                 Border {
-                    position: 1.0,
+                    position: 1.5,
                     normal: Vector3::new(-1.0, 0.0, 0.0),
                 },
                 Border {
-                    position: 1.0,
+                    position: 1.5,
                     normal: Vector3::new(0.0, 0.0, 1.0),
                 },
                 Border {
-                    position: 1.0,
+                    position: 1.5,
                     normal: Vector3::new(0.0, 0.0, -1.0),
                 },
             ],
@@ -69,7 +69,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             energies: vec![],
         };
 
-        let camera = Vector2::new(Rad(0.0), Rad(PI / 4.0));
+        let camera = Vector2::new(Rad(0.0), Rad(0.0));
         let view_matrix = Matrix4::from_translation(Vector3::new(0.0, 0.0, -4.0))
             * Matrix4::from_angle_x(camera.x)
             * Matrix4::from_angle_y(camera.y);
@@ -100,7 +100,7 @@ impl<'s> ApplicationHandler for Game<'s> {
             [-1.0, 1.0, 1.0],
         ]
         .map(|[x, y, z]| BoxVertex {
-            position: [x, y, z, 1.0],
+            position: [x * 1.5, y * 1.5, 0.0, 1.0],
         });
         let ball_verticies: Vec<_> = {
             let bottom_left = [-1.0, -1.0, 0.0, -1.0, -1.0];
@@ -220,7 +220,7 @@ impl<'s> ApplicationHandler for Game<'s> {
                 },
             ) => {
                 let delta_time = instant.elapsed();
-                physics.tick(delta_time.div_f64(10.0));
+                physics.tick(delta_time.div_f64(1.0));
                 *instant = Instant::now();
                 let instances: Vec<[[f32; 4]; 5]> = physics
                     .balls
